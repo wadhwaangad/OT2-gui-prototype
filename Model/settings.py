@@ -8,7 +8,7 @@ import os
 from typing import Dict, Any, Optional
 from Model.ot2_api import OpentronsAPI # Import the global Opentrons API instance
 
-robot_api = None
+
 class SettingsModel:
     """Model for handling settings and robot control operations."""
     
@@ -18,6 +18,7 @@ class SettingsModel:
         self.robot_initialized = False
         self.lights_on = False
         self.current_run_info = {}
+        self.robot_api = None
         
     def load_settings(self) -> Dict[str, Any]:
         """Load settings from JSON file."""
@@ -74,7 +75,7 @@ class SettingsModel:
     def initialize_robot(self) -> bool:
         """Initialize the robot connection."""
         try:
-            robot_api = OpentronsAPI()  # Use the global Opentrons API instance
+            self.robot_api = OpentronsAPI()  # Use the global Opentrons API instance
             print("Initializing robot...")
             # Simulate initialization
             self.robot_initialized = True
@@ -98,7 +99,7 @@ class SettingsModel:
     def toggle_lights(self) -> bool:
         """Toggle the robot lights on/off."""
         try:
-            robot_api.toggle_lights()
+            self.robot_api.toggle_lights()
             self.lights_on = not self.lights_on
             print(f"Lights {'ON' if self.lights_on else 'OFF'}")
             self.settings["lighting"]["enabled"] = self.lights_on
@@ -111,7 +112,7 @@ class SettingsModel:
     def home_robot(self) -> bool:
         """Home the robot to its reference position."""
         try:
-            robot_api.home_robot()
+            self.robot_api.home_robot()
             print("Homing robot...")
             if not self.robot_initialized:
                 print("Robot not initialized. Please initialize first.")
@@ -124,7 +125,7 @@ class SettingsModel:
     def get_run_info(self) -> Dict[str, Any]:
         """Get current run information."""
         try:
-            self.current_run_info = robot_api.get_run_info()
+            self.current_run_info = self.robot_api.get_run_info()
             print("Getting run info...")
             return self.current_run_info
         except Exception as e:
@@ -148,7 +149,7 @@ class SettingsModel:
         """Create a new run with the given configuration."""
         try:
             # TODO: Implement actual run creation
-            robot_api.create_run()
+            self.robot_api.create_run()
             print(f"Creating run with config: {run_config}")
             return True
         except Exception as e:
@@ -158,6 +159,7 @@ class SettingsModel:
     def load_pipette(self, pipette_type: str, mount: str) -> bool:
         """Load a pipette of the specified type and mount."""
         try:
+            self.robot_api.load_pipette()  
             # TODO: Implement actual pipette loading
             print(f"Loading pipette: {pipette_type} on {mount} mount")
             self.settings["pipette_config"]["type"] = pipette_type
