@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 
 class Worker(QObject):
     finished = pyqtSignal()
@@ -16,8 +16,11 @@ class Worker(QObject):
         """Run the task."""
         try:
             res = self.fn(*self.args, **self.kwargs)
+            # Only emit result if not interacting with Qt objects
             self.result.emit(res)
         except Exception as e:
+            # Emit error as string
             self.error.emit(str(e))
         finally:
+            # Always emit finished
             self.finished.emit()

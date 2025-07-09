@@ -13,7 +13,6 @@ from View.camera_view import CameraView
 from View.settings_view import SettingsView
 from View.labware_view import LabwareView
 
-
 class MainWindow(QMainWindow):
     """Main application window."""
     

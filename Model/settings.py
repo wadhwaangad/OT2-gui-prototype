@@ -3,11 +3,12 @@ Settings model for the microtissue manipulator GUI.
 Contains backend functions for robot control and settings management.
 """
 
+from concurrent.futures import thread
 import json
 import os
 from typing import Dict, Any, Optional
 from Model.ot2_api import OpentronsAPI 
-import Qthread 
+from PyQt6.QtCore import QThread
 from Model.worker import Worker
 
 robot_api = None
@@ -20,6 +21,7 @@ class SettingsModel:
         self.robot_initialized = False
         self.lights_on = False
         self.current_run_info = {}
+        self.active_threads=[]
 
     def run_in_thread(self, fn, *args, on_result=None, on_error=None, on_finished=None, **kwargs):
         """Run a function in a separate thread using Worker."""
@@ -34,14 +36,21 @@ class SettingsModel:
         if on_finished:
             worker.finished.connect(on_finished)
 
-        worker.finished.connect(thread.quit)
-        worker.finished.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
+        def cleanup():
+            if thread in self.active_threads:
+                self.active_threads.remove(thread)
+            thread.quit()
+            thread.wait()  # Wait for thread to finish
+            worker.deleteLater()
+            thread.deleteLater()
 
+        worker.finished.connect(cleanup)
         thread.started.connect(worker.run)
+
+        self.active_threads.append(thread)
         thread.start()
         return thread
-
+    
     def load_settings(self) -> Dict[str, Any]:
         """Load settings from JSON file."""
         if os.path.exists(self.settings_file):
