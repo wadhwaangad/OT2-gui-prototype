@@ -85,49 +85,49 @@ class MainController:
         return camera_name in self.active_cameras
     
     # Settings control methods
-    def initialize_robot(self) -> bool:
-        """Initialize robot connection."""
-        return self.settings_model.initialize_robot()
-    
-    def add_slot_offsets(self, x: float, y: float, z: float) -> bool:
-        """Add slot offsets."""
-        return self.settings_model.add_slot_offsets(x, y, z)
-    
-    def toggle_lights(self) -> bool:
-        """Toggle robot lights."""
-        return self.settings_model.toggle_lights()
-    
-    def home_robot(self) -> bool:
-        """Home the robot."""
-        return self.settings_model.home_robot()
-    
-    def get_run_info(self) -> Dict[str, Any]:
-        """Get current run information."""
-        return self.settings_model.get_run_info()
-    
-    def retract_axis(self, axis: str) -> bool:
-        """Retract a specific axis."""
-        return self.settings_model.retract_axis(axis)
-    
-    def create_run(self, run_config: Dict[str, Any]) -> bool:
-        """Create a new run."""
-        return self.settings_model.create_run(run_config)
-    
-    def load_pipette(self, pipette_type: str, mount: str) -> bool:
-        """Load a pipette."""
-        return self.settings_model.load_pipette(pipette_type, mount)
-    
-    def placeholder_function_1(self) -> bool:
-        """Placeholder function 1."""
-        return self.settings_model.placeholder_function_1()
-    
-    def placeholder_function_2(self) -> bool:
-        """Placeholder function 2."""
-        return self.settings_model.placeholder_function_2()
-    
-    def placeholder_function_3(self) -> bool:
-        """Placeholder function 3."""
-        return self.settings_model.placeholder_function_3()
+    def initialize_robot(self, on_result=None, on_error=None, on_finished=None):
+        """Initialize robot connection in a thread."""
+        return self.settings_model.run_in_thread(self.settings_model.initialize_robot, on_result=on_result, on_error=on_error, on_finished=on_finished)
+
+    def add_slot_offsets(self, x: float, y: float, z: float, on_result=None, on_error=None, on_finished=None):
+        """Add slot offsets in a thread."""
+        return self.settings_model.run_in_thread(self.settings_model.add_slot_offsets, x, y, z, on_result=on_result, on_error=on_error, on_finished=on_finished)
+
+    def toggle_lights(self, on_result=None, on_error=None, on_finished=None):
+        """Toggle robot lights in a thread."""
+        return self.settings_model.run_in_thread(self.settings_model.toggle_lights, on_result=on_result, on_error=on_error, on_finished=on_finished)
+
+    def home_robot(self, on_result=None, on_error=None, on_finished=None):
+        """Home the robot in a thread."""
+        return self.settings_model.run_in_thread(self.settings_model.home_robot, on_result=on_result, on_error=on_error, on_finished=on_finished)
+
+    def get_run_info(self, on_result=None, on_error=None, on_finished=None):
+        """Get current run information in a thread."""
+        return self.settings_model.run_in_thread(self.settings_model.get_run_info, on_result=on_result, on_error=on_error, on_finished=on_finished)
+
+    def retract_axis(self, axis: str, on_result=None, on_error=None, on_finished=None):
+        """Retract a specific axis in a thread."""
+        return self.settings_model.run_in_thread(self.settings_model.retract_axis, axis, on_result=on_result, on_error=on_error, on_finished=on_finished)
+
+    def create_run(self, run_config: Dict[str, Any], on_result=None, on_error=None, on_finished=None):
+        """Create a new run in a thread."""
+        return self.settings_model.run_in_thread(self.settings_model.create_run, run_config, on_result=on_result, on_error=on_error, on_finished=on_finished)
+
+    def load_pipette(self, pipette_type: str, mount: str, on_result=None, on_error=None, on_finished=None):
+        """Load a pipette in a thread."""
+        return self.settings_model.run_in_thread(self.settings_model.load_pipette, pipette_type, mount, on_result=on_result, on_error=on_error, on_finished=on_finished)
+
+    def placeholder_function_1(self, on_result=None, on_error=None, on_finished=None):
+        """Placeholder function 1 in a thread."""
+        return self.settings_model.run_in_thread(self.settings_model.placeholder_function_1, on_result=on_result, on_error=on_error, on_finished=on_finished)
+
+    def placeholder_function_2(self, on_result=None, on_error=None, on_finished=None):
+        """Placeholder function 2 in a thread."""
+        return self.settings_model.run_in_thread(self.settings_model.placeholder_function_2, on_result=on_result, on_error=on_error, on_finished=on_finished)
+
+    def placeholder_function_3(self, on_result=None, on_error=None, on_finished=None):
+        """Placeholder function 3 in a thread."""
+        return self.settings_model.run_in_thread(self.settings_model.placeholder_function_3, on_result=on_result, on_error=on_error, on_finished=on_finished)
     
     def get_robot_status(self) -> Dict[str, Any]:
         """Get current robot status."""

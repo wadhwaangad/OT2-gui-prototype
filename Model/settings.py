@@ -6,7 +6,9 @@ Contains backend functions for robot control and settings management.
 import json
 import os
 from typing import Dict, Any, Optional
-from Model.ot2_api import OpentronsAPI # Import the global Opentrons API instance
+from Model.ot2_api import OpentronsAPI 
+import Qthread 
+from Model.worker import Worker
 
 robot_api = None
 class SettingsModel:
@@ -18,7 +20,28 @@ class SettingsModel:
         self.robot_initialized = False
         self.lights_on = False
         self.current_run_info = {}
-        
+
+    def run_in_thread(self, fn, *args, on_result=None, on_error=None, on_finished=None, **kwargs):
+        """Run a function in a separate thread using Worker."""
+        thread = QThread()
+        worker = Worker(fn, *args, **kwargs)
+        worker.moveToThread(thread)
+
+        if on_result:
+            worker.result.connect(on_result)
+        if on_error:
+            worker.error.connect(on_error)
+        if on_finished:
+            worker.finished.connect(on_finished)
+
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+
+        thread.started.connect(worker.run)
+        thread.start()
+        return thread
+
     def load_settings(self) -> Dict[str, Any]:
         """Load settings from JSON file."""
         if os.path.exists(self.settings_file):
@@ -168,6 +191,8 @@ class SettingsModel:
             print(f"Error loading pipette: {e}")
             return False
     
+    
+    
     def placeholder_function_1(self) -> bool:
         """Placeholder function 1."""
         try:
@@ -202,3 +227,4 @@ class SettingsModel:
     def get_lights_status(self) -> bool:
         """Get current lights status."""
         return self.lights_on
+    
