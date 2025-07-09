@@ -1,0 +1,20 @@
+{
+  "robot_config": {
+    "port": "COM3",
+    "baudrate": 115200,
+    "timeout": 30
+  },
+  "slot_offsets": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0
+  },
+  "pipette_config": {
+    "type": "p300_single",
+    "mount": "right"
+  },
+  "lighting": {
+    "brightness": 100,
+    "enabled": false
+  }
+}
