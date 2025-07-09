@@ -6,7 +6,7 @@ Contains functionality for managing labware declarations and configurations.
 import json
 import os
 from typing import Dict, Any, List, Optional, Tuple
-
+import Model.globals as globals
 
 class LabwareModel:
     """Model for handling labware declarations and configurations."""

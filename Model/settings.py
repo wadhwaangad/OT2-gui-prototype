@@ -10,8 +10,7 @@ from typing import Dict, Any, Optional
 from Model.ot2_api import OpentronsAPI 
 from PyQt6.QtCore import QThread
 from Model.worker import Worker
-
-robot_api = None
+import Model.globals as globals
 class SettingsModel:
     """Model for handling settings and robot control operations."""
     
@@ -106,7 +105,7 @@ class SettingsModel:
     def initialize_robot(self) -> bool:
         """Initialize the robot connection."""
         try:
-            self.robot_api = OpentronsAPI()  # Use the global Opentrons API instance
+            globals.robot_api = OpentronsAPI()  # Use the global Opentrons API instance
             print("Initializing robot...")
             # Simulate initialization
             self.robot_initialized = True
@@ -130,7 +129,7 @@ class SettingsModel:
     def toggle_lights(self) -> bool:
         """Toggle the robot lights on/off."""
         try:
-            self.robot_api.toggle_lights()
+            globals.robot_api.toggle_lights()
             self.lights_on = not self.lights_on
             print(f"Lights {'ON' if self.lights_on else 'OFF'}")
             self.settings["lighting"]["enabled"] = self.lights_on
@@ -143,9 +142,9 @@ class SettingsModel:
     def home_robot(self) -> bool:
         """Home the robot to its reference position."""
         try:
-            self.robot_api.home_robot()
+            globals.robot_api.home_robot()
             print("Homing robot...")
-            if not self.robot_initialized:
+            if not globals.robot_api:
                 print("Robot not initialized. Please initialize first.")
                 return False
             return True
@@ -156,7 +155,7 @@ class SettingsModel:
     def get_run_info(self) -> Dict[str, Any]:
         """Get current run information."""
         try:
-            self.current_run_info = self.robot_api.get_run_info()
+            self.current_run_info = globals.robot_api.get_run_info()
             print("Getting run info...")
             return self.current_run_info
         except Exception as e:
@@ -180,7 +179,7 @@ class SettingsModel:
         """Create a new run with the given configuration."""
         try:
             # TODO: Implement actual run creation
-            self.robot_api.create_run()
+            globals.robot_api.create_run()
             print(f"Creating run with config: {run_config}")
             return True
         except Exception as e:
@@ -190,7 +189,7 @@ class SettingsModel:
     def load_pipette(self, pipette_type: str, mount: str) -> bool:
         """Load a pipette of the specified type and mount."""
         try:
-            self.robot_api.load_pipette()  
+            globals.robot_api.load_pipette()
             # TODO: Implement actual pipette loading
             print(f"Loading pipette: {pipette_type} on {mount} mount")
             self.settings["pipette_config"]["type"] = pipette_type
