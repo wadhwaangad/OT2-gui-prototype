@@ -17,7 +17,6 @@ class SettingsModel:
     def __init__(self, settings_file: str = "settings.json"):
         self.settings_file = settings_file
         self.settings = self.load_settings()
-        self.robot_initialized = False
         self.lights_on = False
         self.current_run_info = {}
         self.active_threads=[]
@@ -108,7 +107,7 @@ class SettingsModel:
             globals.robot_api = OpentronsAPI()  # Use the global Opentrons API instance
             print("Initializing robot...")
             # Simulate initialization
-            self.robot_initialized = True
+            globals.robot_initialized = True
             return True
         except Exception as e:
             print(f"Error initializing robot: {e}")
@@ -167,7 +166,7 @@ class SettingsModel:
         try:
             # TODO: Implement actual axis retraction
             print(f"Retracting axis: {axis}")
-            if not self.robot_initialized:
+            if not globals.robot_initialized:
                 print("Robot not initialized. Please initialize first.")
                 return False
             return True
@@ -231,7 +230,7 @@ class SettingsModel:
     
     def is_robot_initialized(self) -> bool:
         """Check if the robot is initialized."""
-        return self.robot_initialized
+        return globals.robot_initialized
     
     def get_lights_status(self) -> bool:
         """Get current lights status."""

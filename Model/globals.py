@@ -1,1 +1,2 @@
 robot_api=None
+robot_initialized=False
