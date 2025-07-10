@@ -163,7 +163,7 @@ class MainController:
         """Initialize robot connection in a thread."""
         return self.settings_model.run_in_thread(self.settings_model.initialize_robot, on_result=on_result, on_error=on_error, on_finished=on_finished)
 
-    def add_slot_offsets(self, slots: List[int], x: float, y: float, z: float, on_result=None, on_error=None, on_finished=None):
+    def add_slot_offsets(self, slots: list[int], x: float, y: float, z: float, on_result=None, on_error=None, on_finished=None):
         """Add slot offsets in a thread."""
         return self.settings_model.run_in_thread(self.settings_model.add_slot_offsets, slots, x, y, z, on_result=on_result, on_error=on_error, on_finished=on_finished)
 
