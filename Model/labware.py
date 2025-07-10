@@ -34,7 +34,7 @@ class LabwareModel:
         except IOError as e:
             print(f"Error saving labware config: {e}")
     
-    def get_default_labware_config(self) -> Dict[str, Any]:
+    def get_default_labware_config(self) -> list[str]:
         """Get default labware configuration."""
         return {
             "deck_layout": {
@@ -55,64 +55,17 @@ class LabwareModel:
             "current_protocol": None
         }
     
-    def get_available_labware(self) -> List[Dict[str, Any]]:
+    def get_available_labware(self) -> List[str]:
         """Get list of available labware types."""
-        return [
-            {
-                "name": "96-well plate",
-                "type": "96_well_plate",
-                "description": "Standard 96-well microplate",
-                "dimensions": {"rows": 8, "columns": 12}
-            },
-            {
-                "name": "384-well plate",
-                "type": "384_well_plate", 
-                "description": "High-density 384-well microplate",
-                "dimensions": {"rows": 16, "columns": 24}
-            },
-            {
-                "name": "12-well reservoir",
-                "type": "12_well_reservoir",
-                "description": "12-well reagent reservoir",
-                "dimensions": {"rows": 1, "columns": 12}
-            },
-            {
-                "name": "200μL tip rack",
-                "type": "tip_rack_200ul",
-                "description": "200μL pipette tip rack",
-                "dimensions": {"rows": 8, "columns": 12}
-            },
-            {
-                "name": "1000μL tip rack",
-                "type": "tip_rack_1000ul",
-                "description": "1000μL pipette tip rack",
-                "dimensions": {"rows": 8, "columns": 12}
-            },
-            {
-                "name": "15mL tube rack",
-                "type": "tube_rack_15ml",
-                "description": "15mL conical tube rack",
-                "dimensions": {"rows": 3, "columns": 5}
-            },
-            {
-                "name": "50mL tube rack",
-                "type": "tube_rack_50ml",
-                "description": "50mL conical tube rack",
-                "dimensions": {"rows": 2, "columns": 3}
-            },
-            {
-                "name": "PCR plate",
-                "type": "pcr_plate_96",
-                "description": "96-well PCR plate",
-                "dimensions": {"rows": 8, "columns": 12}
-            }
+        return ["corning_12_wellplate_6.9ml_flat","corning_24_wellplate_3.4ml_flat","corning_384_wellplate_112ul_flat","corning_48_wellplate_1.6ml_flat", 
+                "corning_6_wellplate_16.8ml_flat","corning_96_wellplate_360ul_flat","corning_96_wellplate_360ul_lid", "opentrons_96_tiprack_300ul"
         ]
     
-    def get_slot_configuration(self, slot: str) -> Optional[Dict[str, Any]]:
+    def get_slot_configuration(self, slot: str) -> Optional[str]:
         """Get configuration for a specific deck slot."""
         return self.labware_config["deck_layout"].get(slot)
     
-    def set_slot_configuration(self, slot: str, labware_type: str, labware_name: str = None) -> bool:
+    def set_slot_configuration(self, slot: int, labware_type: str, labware_name: str = None) -> bool:
         """Set labware configuration for a specific deck slot."""
         try:
             if slot not in self.labware_config["deck_layout"]:

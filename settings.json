@@ -7,7 +7,7 @@
   "slot_offsets": {
     "x": 0.0,
     "y": 0.0,
-    "z": 0.0
+    "z": 65.0
   },
   "pipette_config": {
     "type": "p300_single",

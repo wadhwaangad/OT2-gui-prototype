@@ -183,7 +183,7 @@ class SettingsView(QWidget):
         # Axis Selection for Retraction
         layout.addWidget(QLabel("Retract Axis:"), 4, 0)
         self.retract_axis_combo = QComboBox()
-        self.retract_axis_combo.addItems(["X", "Y", "Z", "A", "B", "C"])
+        self.retract_axis_combo.addItems(["x", "y", "leftZ", "rightZ", "leftPlunger", "rightPlunger", "extensionZ", "extensionJaw", "axis96ChannelCam"])
         layout.addWidget(self.retract_axis_combo, 4, 1)
 
         group.setLayout(layout)

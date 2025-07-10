@@ -165,11 +165,11 @@ class SettingsModel:
     def retract_axis(self, axis: str) -> bool:
         """Retract a specific axis."""
         try:
-            # TODO: Implement actual axis retraction
-            print(f"Retracting axis: {axis}")
             if not globals.robot_initialized:
                 print("Robot not initialized. Please initialize first.")
                 return False
+            globals.robot_api.retract_axis(axis)
+            print(f"Retracting axis: {axis}")
             return True
         except Exception as e:
             print(f"Error retracting axis {axis}: {e}")
