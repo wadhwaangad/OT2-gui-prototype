@@ -4,7 +4,7 @@ Settings view for the microtissue manipulator GUI.
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, 
                            QPushButton, QLabel, QGroupBox, QMessageBox, QProgressBar,
-                           QDoubleSpinBox, QLineEdit, QComboBox, QTextEdit, QScrollArea)
+                           QDoubleSpinBox, QLineEdit, QComboBox, QTextEdit, QScrollArea, QListWidget, QListWidgetItem)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 
@@ -130,53 +130,62 @@ class SettingsView(QWidget):
         """Create configuration group."""
         group = QGroupBox("Configuration")
         layout = QGridLayout()
-        
+
         # Slot Offsets
         layout.addWidget(QLabel("Slot Offsets:"), 0, 0)
-        
+
+        # Slot selection list
+        layout.addWidget(QLabel("Select Slots:"), 0, 2)
+        self.slot_list_widget = QListWidget()
+        self.slot_list_widget.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        # Example: add slots 1-12 (customize as needed)
+        for i in range(1, 13):
+            self.slot_list_widget.addItem(QListWidgetItem(str(i)))
+        layout.addWidget(self.slot_list_widget, 0, 3, 3, 1)
+
         layout.addWidget(QLabel("X:"), 1, 0)
         self.offset_x_spinbox = QDoubleSpinBox()
         self.offset_x_spinbox.setMinimum(-1000.0)
         self.offset_x_spinbox.setMaximum(1000.0)
         self.offset_x_spinbox.setDecimals(2)
         layout.addWidget(self.offset_x_spinbox, 1, 1)
-        
+
         layout.addWidget(QLabel("Y:"), 1, 2)
         self.offset_y_spinbox = QDoubleSpinBox()
         self.offset_y_spinbox.setMinimum(-1000.0)
         self.offset_y_spinbox.setMaximum(1000.0)
         self.offset_y_spinbox.setDecimals(2)
         layout.addWidget(self.offset_y_spinbox, 1, 3)
-        
+
         layout.addWidget(QLabel("Z:"), 1, 4)
         self.offset_z_spinbox = QDoubleSpinBox()
         self.offset_z_spinbox.setMinimum(-1000.0)
         self.offset_z_spinbox.setMaximum(1000.0)
         self.offset_z_spinbox.setDecimals(2)
         layout.addWidget(self.offset_z_spinbox, 1, 5)
-        
+
         # Add Slot Offsets Button
         self.add_offsets_btn = QPushButton("Add Slot Offsets")
         self.add_offsets_btn.clicked.connect(self.on_add_slot_offsets)
         layout.addWidget(self.add_offsets_btn, 2, 0, 1, 2)
-        
+
         # Pipette Configuration
         layout.addWidget(QLabel("Pipette Type:"), 3, 0)
         self.pipette_type_combo = QComboBox()
         self.pipette_type_combo.addItems(["p300_single", "p300_multi", "p1000_single", "p20_single"])
         layout.addWidget(self.pipette_type_combo, 3, 1)
-        
+
         layout.addWidget(QLabel("Mount:"), 3, 2)
         self.mount_combo = QComboBox()
         self.mount_combo.addItems(["left", "right"])
         layout.addWidget(self.mount_combo, 3, 3)
-        
+
         # Axis Selection for Retraction
         layout.addWidget(QLabel("Retract Axis:"), 4, 0)
         self.retract_axis_combo = QComboBox()
         self.retract_axis_combo.addItems(["X", "Y", "Z", "A", "B", "C"])
         layout.addWidget(self.retract_axis_combo, 4, 1)
-        
+
         group.setLayout(layout)
         return group
     
@@ -323,10 +332,17 @@ class SettingsView(QWidget):
         x = self.offset_x_spinbox.value()
         y = self.offset_y_spinbox.value()
         z = self.offset_z_spinbox.value()
-        
+        # Get selected slots as a list of ints
+        selected_items = self.slot_list_widget.selectedItems()
+        slots = [int(item.text()) for item in selected_items]
+        if not slots:
+            QMessageBox.warning(self, "Warning", "Please select at least one slot.")
+            return
+
         self.show_progress("Adding slot offsets...")
-        success = self.controller.add_slot_offsets(x, y, z)
-        self.show_result(success, f"Slot offsets added: X={x}, Y={y}, Z={z}" if success else "Failed to add slot offsets")
+        def on_result(success):
+            self.show_result(success, f"Slot offsets added: Slots={slots}, X={x}, Y={y}, Z={z}" if success else "Failed to add slot offsets")
+        self.controller.add_slot_offsets(slots, x, y, z, on_result=on_result, on_error=None, on_finished=self.hide_progress)
     
     def on_placeholder_1(self):
         """Handle placeholder 1 button click."""

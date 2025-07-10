@@ -48,15 +48,31 @@ class CameraTestWindow(QDialog):
         # Focus control
         focus_layout = QVBoxLayout()
         focus_layout.addWidget(QLabel("Focus:"))
+        focus_input_layout = QHBoxLayout()
         self.focus_slider = QSlider(Qt.Orientation.Horizontal)
         self.focus_slider.setMinimum(0)
         self.focus_slider.setMaximum(255)
         self.focus_slider.setValue(128)
         self.focus_slider.valueChanged.connect(self.on_focus_changed)
-        focus_layout.addWidget(self.focus_slider)
-        
+        focus_input_layout.addWidget(self.focus_slider)
+
+        self.focus_max_spinbox = QSpinBox()
+        self.focus_max_spinbox.setMinimum(1)
+        self.focus_max_spinbox.setMaximum(10000)
+        self.focus_max_spinbox.setValue(255)
+        self.focus_max_spinbox.setPrefix("Max: ")
+        self.focus_max_spinbox.valueChanged.connect(self.on_focus_max_changed)
+        focus_input_layout.addWidget(self.focus_max_spinbox)
+
+        focus_layout.addLayout(focus_input_layout)
         self.focus_value_label = QLabel("128")
         focus_layout.addWidget(self.focus_value_label)
+    def on_focus_max_changed(self, value):
+        """Update the maximum value of the focus slider."""
+        self.focus_slider.setMaximum(value)
+        # If current value is above new max, adjust
+        if self.focus_slider.value() > value:
+            self.focus_slider.setValue(value)
         
         # Control buttons
         button_layout = QVBoxLayout()
@@ -232,17 +248,33 @@ class CameraView(QWidget):
         # Focus control
         focus_layout = QVBoxLayout()
         focus_layout.addWidget(QLabel("Focus:"))
+        focus_input_layout = QHBoxLayout()
         self.focus_slider = QSlider(Qt.Orientation.Horizontal)
         self.focus_slider.setMinimum(0)
         self.focus_slider.setMaximum(255)
         self.focus_slider.setValue(128)
         self.focus_slider.valueChanged.connect(self.on_focus_changed)
         self.focus_slider.setEnabled(False)
-        focus_layout.addWidget(self.focus_slider)
-        
+        focus_input_layout.addWidget(self.focus_slider)
+
+        self.focus_max_spinbox = QSpinBox()
+        self.focus_max_spinbox.setMinimum(1)
+        self.focus_max_spinbox.setMaximum(10000)
+        self.focus_max_spinbox.setValue(255)
+        self.focus_max_spinbox.setPrefix("Max: ")
+        self.focus_max_spinbox.valueChanged.connect(self.on_focus_max_changed)
+        focus_input_layout.addWidget(self.focus_max_spinbox)
+
+        focus_layout.addLayout(focus_input_layout)
         self.focus_value_label = QLabel("128")
         focus_layout.addWidget(self.focus_value_label)
         controls_layout.addLayout(focus_layout)
+    def on_focus_max_changed(self, value):
+        """Update the maximum value of the focus slider."""
+        self.focus_slider.setMaximum(value)
+        # If current value is above new max, adjust
+        if self.focus_slider.value() > value:
+            self.focus_slider.setValue(value)
         
         # Reset view button
         self.reset_view_btn = QPushButton("Reset View")

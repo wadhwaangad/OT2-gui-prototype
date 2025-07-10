@@ -112,11 +112,12 @@ class SettingsModel:
         except Exception as e:
             print(f"Error initializing robot: {e}")
             return False
-    
-    def add_slot_offsets(self, x: float, y: float, z: float) -> bool:
+
+    def add_slot_offsets(self, slots: List[int], x: float, y: float, z: float) -> bool:
         """Add slot offsets to the robot configuration."""
         try:
             # TODO: Implement actual slot offset addition
+            globals.robot_api.add_slot_offsets(slots,(x, y, z))
             print(f"Adding slot offsets: X={x}, Y={y}, Z={z}")
             self.settings["slot_offsets"] = {"x": x, "y": y, "z": z}
             self.save_settings()

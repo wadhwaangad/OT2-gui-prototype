@@ -135,7 +135,7 @@ class LabwareModel:
                 "labware_name": labware_name or labware_info["name"],
                 "labware_info": labware_info
             }
-            
+            globals.robot_api.load_labware(labware_name, slot)
             self.save_labware_config()
             return True
         except Exception as e:

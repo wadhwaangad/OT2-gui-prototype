@@ -7,6 +7,11 @@ from typing import Dict, Any, List, Optional
 from Model.camera import CameraManagerWindows, MultiprocessVideoCapture
 from Model.settings import SettingsModel
 from Model.labware import LabwareModel
+import sys
+import os
+import json
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from paths import CAM_CONFIGS_DIR
 
 
 class MainController:
@@ -35,16 +40,85 @@ class MainController:
     
     # Camera control methods
     def get_available_cameras(self) -> List[tuple]:
-        """Get list of available cameras."""
-        return self.camera_manager.get_available_cameras()
+        """Get list of available cameras with user-friendly labels if available."""
+        # Load camera labels
+        label_path = os.path.join(CAM_CONFIGS_DIR, 'camera_labels.json')
+        try:
+            with open(label_path, 'r') as f:
+                camera_labels = json.load(f)
+        except Exception:
+            camera_labels = {}
+
+        # Reverse mapping: label -> config filename
+        label_to_config = {v: k for k, v in camera_labels.items()}
+
+        cameras = self.camera_manager.get_available_cameras()
+        labeled_cameras = []
+        for cam_name, cam_index in cameras:
+            # Try to find a user label for this camera
+            user_label = None
+            config_file = None
+            for key, label in camera_labels.items():
+                if label in cam_name:
+                    user_label = key
+                    config_file = key + '.json'
+                    break
+            if user_label and config_file:
+                # Try to load default resolution
+                config_path = os.path.join(CAM_CONFIGS_DIR, config_file)
+                try:
+                    with open(config_path, 'r') as f:
+                        config = json.load(f)
+                    default_res = config.get('default_resolution', None)
+                except Exception:
+                    default_res = None
+                labeled_cameras.append((user_label, cam_index, cam_name, default_res))
+            else:
+                labeled_cameras.append((cam_name, cam_index, cam_name, None))
+        return labeled_cameras
     
-    def start_camera_capture(self, camera_name: str, camera_index: int, 
-                           width: int = 640, height: int = 480, focus: int = None) -> bool:
-        """Start capturing from a specific camera."""
+    def start_camera_capture(self, camera_name: str, camera_index: int, width: int = None, height: int = None, focus: int = None) -> bool:
+        """Start capturing from a specific camera, using default resolution if available."""
         try:
             if camera_name in self.active_cameras:
                 self.stop_camera_capture(camera_name)
-            
+
+            # Try to use default resolution if not provided
+            if width is None or height is None:
+                # Load camera labels
+                label_path = os.path.join(CAM_CONFIGS_DIR, 'camera_labels.json')
+                try:
+                    with open(label_path, 'r') as f:
+                        camera_labels = json.load(f)
+                except Exception:
+                    camera_labels = {}
+
+                # If camera_name is a user label, get config
+                config_file = None
+                if camera_name in camera_labels:
+                    config_file = camera_name + '.json'
+                else:
+                    # Try to match by label value
+                    for key, label in camera_labels.items():
+                        if label in camera_name:
+                            config_file = key + '.json'
+                            break
+                if config_file:
+                    config_path = os.path.join(CAM_CONFIGS_DIR, config_file)
+                    try:
+                        with open(config_path, 'r') as f:
+                            config = json.load(f)
+                        default_res = config.get('default_resolution', None)
+                        if default_res and len(default_res) == 2:
+                            width, height = default_res
+                    except Exception:
+                        pass
+            # Fallback if still None
+            if width is None:
+                width = 640
+            if height is None:
+                height = 480
+
             capture = MultiprocessVideoCapture(camera_index, width, height, focus=focus)
             self.active_cameras[camera_name] = capture
             return True
@@ -89,9 +163,9 @@ class MainController:
         """Initialize robot connection in a thread."""
         return self.settings_model.run_in_thread(self.settings_model.initialize_robot, on_result=on_result, on_error=on_error, on_finished=on_finished)
 
-    def add_slot_offsets(self, x: float, y: float, z: float, on_result=None, on_error=None, on_finished=None):
+    def add_slot_offsets(self, slots: List[int], x: float, y: float, z: float, on_result=None, on_error=None, on_finished=None):
         """Add slot offsets in a thread."""
-        return self.settings_model.run_in_thread(self.settings_model.add_slot_offsets, x, y, z, on_result=on_result, on_error=on_error, on_finished=on_finished)
+        return self.settings_model.run_in_thread(self.settings_model.add_slot_offsets, slots, x, y, z, on_result=on_result, on_error=on_error, on_finished=on_finished)
 
     def toggle_lights(self, on_result=None, on_error=None, on_finished=None):
         """Toggle robot lights in a thread."""

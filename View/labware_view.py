@@ -186,19 +186,19 @@ class LabwareView(QWidget):
         
         # Create deck slots (OT-2 has 11 slots in specific layout)
         slot_positions = {
-            '10': (0, 0), '11': (0, 1), '12': (0, 2),
+            '10': (0, 0), '11': (0, 1),
             '7': (1, 0), '8': (1, 1), '9': (1, 2),
             '4': (2, 0), '5': (2, 1), '6': (2, 2),
             '1': (3, 0), '2': (3, 1), '3': (3, 2)
         }
-        
+
         for slot_num, (row, col) in slot_positions.items():
             slot_widget = DeckSlotWidget(slot_num)
             slot_widget.slot_clicked.connect(self.on_slot_clicked)
             self.deck_slots[slot_num] = slot_widget
             deck_layout.addWidget(slot_widget, row, col)
-        
-        # Add trash and fixed trash slots
+
+        # Add trash slot at top right (row 0, col 2)
         trash_widget = DeckSlotWidget("Trash")
         trash_widget.labware_label.setText("Trash")
         trash_widget.setStyleSheet("""
@@ -208,8 +208,8 @@ class LabwareView(QWidget):
                 border-radius: 5px;
             }
         """)
-        deck_layout.addWidget(trash_widget, 4, 2)
-        
+        deck_layout.addWidget(trash_widget, 0, 2)
+
         layout.addLayout(deck_layout)
         
         # Legend
