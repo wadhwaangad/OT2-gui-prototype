@@ -11,7 +11,7 @@
   },
   "pipette_config": {
     "type": "p300_single",
-    "mount": "right"
+    "mount": "left"
   },
   "lighting": {
     "brightness": 100,

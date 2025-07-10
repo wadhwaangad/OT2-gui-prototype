@@ -30,6 +30,7 @@ class CameraTestWindow(QDialog):
         
         # Start camera capture
         self.start_capture()
+        self.on_focus_max_changed(1100)
     
     def setup_ui(self):
         """Setup the user interface."""
@@ -51,28 +52,22 @@ class CameraTestWindow(QDialog):
         focus_input_layout = QHBoxLayout()
         self.focus_slider = QSlider(Qt.Orientation.Horizontal)
         self.focus_slider.setMinimum(0)
-        self.focus_slider.setMaximum(255)
-        self.focus_slider.setValue(128)
+        self.focus_slider.setMaximum(1100)
+        self.focus_slider.setValue(900)
         self.focus_slider.valueChanged.connect(self.on_focus_changed)
         focus_input_layout.addWidget(self.focus_slider)
 
         self.focus_max_spinbox = QSpinBox()
         self.focus_max_spinbox.setMinimum(1)
         self.focus_max_spinbox.setMaximum(10000)
-        self.focus_max_spinbox.setValue(255)
+        self.focus_max_spinbox.setValue(1100)
         self.focus_max_spinbox.setPrefix("Max: ")
         self.focus_max_spinbox.valueChanged.connect(self.on_focus_max_changed)
         focus_input_layout.addWidget(self.focus_max_spinbox)
 
         focus_layout.addLayout(focus_input_layout)
-        self.focus_value_label = QLabel("128")
+        self.focus_value_label = QLabel("900")
         focus_layout.addWidget(self.focus_value_label)
-    def on_focus_max_changed(self, value):
-        """Update the maximum value of the focus slider."""
-        self.focus_slider.setMaximum(value)
-        # If current value is above new max, adjust
-        if self.focus_slider.value() > value:
-            self.focus_slider.setValue(value)
         
         # Control buttons
         button_layout = QVBoxLayout()
@@ -88,7 +83,7 @@ class CameraTestWindow(QDialog):
         controls_layout.addLayout(button_layout)
         controls_layout.addStretch()
         controls_group.setLayout(controls_layout)
-        
+
         # Video display
         self.video_display = VideoDisplayWidget()
         
@@ -103,6 +98,13 @@ class CameraTestWindow(QDialog):
         layout.addWidget(button_box)
         
         self.setLayout(layout)
+
+    def on_focus_max_changed(self, value):
+        """Update the maximum value of the focus slider."""
+        self.focus_slider.setMaximum(value)
+        # If current value is above new max, adjust
+        if self.focus_slider.value() > value:
+            self.focus_slider.setValue(value)
     
     def setup_timer(self):
         """Setup timer for video updates."""
@@ -251,8 +253,8 @@ class CameraView(QWidget):
         focus_input_layout = QHBoxLayout()
         self.focus_slider = QSlider(Qt.Orientation.Horizontal)
         self.focus_slider.setMinimum(0)
-        self.focus_slider.setMaximum(255)
-        self.focus_slider.setValue(128)
+        self.focus_slider.setMaximum(1100)
+        self.focus_slider.setValue(900)
         self.focus_slider.valueChanged.connect(self.on_focus_changed)
         self.focus_slider.setEnabled(False)
         focus_input_layout.addWidget(self.focus_slider)
@@ -260,22 +262,16 @@ class CameraView(QWidget):
         self.focus_max_spinbox = QSpinBox()
         self.focus_max_spinbox.setMinimum(1)
         self.focus_max_spinbox.setMaximum(10000)
-        self.focus_max_spinbox.setValue(255)
+        self.focus_max_spinbox.setValue(1100)
         self.focus_max_spinbox.setPrefix("Max: ")
         self.focus_max_spinbox.valueChanged.connect(self.on_focus_max_changed)
         focus_input_layout.addWidget(self.focus_max_spinbox)
 
         focus_layout.addLayout(focus_input_layout)
-        self.focus_value_label = QLabel("128")
+        self.focus_value_label = QLabel("900")
         focus_layout.addWidget(self.focus_value_label)
         controls_layout.addLayout(focus_layout)
-    def on_focus_max_changed(self, value):
-        """Update the maximum value of the focus slider."""
-        self.focus_slider.setMaximum(value)
-        # If current value is above new max, adjust
-        if self.focus_slider.value() > value:
-            self.focus_slider.setValue(value)
-        
+
         # Reset view button
         self.reset_view_btn = QPushButton("Reset View")
         self.reset_view_btn.clicked.connect(self.reset_embedded_view)
@@ -369,9 +365,11 @@ class CameraView(QWidget):
             self.camera_list.addItem(item)
             return
         
-        for camera_name, camera_index in cameras:
-            item = QListWidgetItem(f"{camera_name} (Index: {camera_index})")
-            item.setData(Qt.ItemDataRole.UserRole, (camera_name, camera_index))
+        for camera_data in cameras:
+            # Unpack the camera data: (user_label, cam_index, cam_name, default_res)
+            user_label, camera_index, cam_name, default_res = camera_data
+            item = QListWidgetItem(f"{user_label} (Index: {camera_index})")
+            item.setData(Qt.ItemDataRole.UserRole, (user_label, camera_index))
             self.camera_list.addItem(item)
     
     def on_camera_selection_changed(self):
@@ -494,6 +492,13 @@ class CameraView(QWidget):
         if self.active_embedded_cameras:
             camera_name = list(self.active_embedded_cameras.keys())[0]
             self.controller.set_camera_focus(camera_name, value)
+    
+    def on_focus_max_changed(self, value):
+        """Update the maximum value of the focus slider."""
+        self.focus_slider.setMaximum(value)
+        # If current value is above new max, adjust
+        if self.focus_slider.value() > value:
+            self.focus_slider.setValue(value)
     
     def reset_embedded_view(self):
         """Reset the embedded video view."""

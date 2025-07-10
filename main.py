@@ -12,6 +12,7 @@ from Controller.main_controller import MainController
 from View.camera_view import CameraView
 from View.settings_view import SettingsView
 from View.labware_view import LabwareView
+import traceback
 
 class MainWindow(QMainWindow):
     """Main application window."""
@@ -263,20 +264,24 @@ class MainWindow(QMainWindow):
 
 
 def main():
-    """Main application entry point."""
-    app = QApplication(sys.argv)
+    try:
+        """Main application entry point."""
+        app = QApplication(sys.argv)
+
+        # Set application properties
+        app.setApplicationName("Microtissue Manipulator")
+        app.setApplicationVersion("1.0")
+        app.setOrganizationName("Lab Automation")
     
-    # Set application properties
-    app.setApplicationName("Microtissue Manipulator")
-    app.setApplicationVersion("1.0")
-    app.setOrganizationName("Lab Automation")
-    
-    # Create and show main window
-    window = MainWindow()
-    window.show()
-    
-    # Run the application
-    sys.exit(app.exec())
+        # Create and show main window
+        window = MainWindow()
+        window.show()
+        
+        # Run the application
+        sys.exit(app.exec())
+    except Exception as e:
+        print(f"Application error: {e}")
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
