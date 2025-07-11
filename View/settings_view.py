@@ -137,9 +137,6 @@ class SettingsView(QWidget):
         self.retract_axis_combo.addItems(["x", "y", "leftZ", "rightZ", "leftPlunger", "rightPlunger", "extensionZ", "extensionJaw", "axis96ChannelCam"])
         layout.addWidget(self.retract_axis_combo, 0, 1)
 
-        # Slot Offsets label
-        layout.addWidget(QLabel("Slot Offsets:"), 1, 0, 1, 2)
-
         # Slot selection list (expanded size)
         layout.addWidget(QLabel("Select Slots:"), 2, 0, 1, 2)
         self.slot_list_widget = QListWidget()

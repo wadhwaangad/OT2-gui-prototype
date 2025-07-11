@@ -461,24 +461,4 @@ class LabwareView(QWidget):
                 self.info_text.append(f"\\n✗ Failed to import deck layout")
     
     def on_add_custom_labware(self):
-        """Handle add custom labware button click."""
-        dialog = AddCustomLabwareDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            labware_data = dialog.get_labware_data()
-            
-            if not all([labware_data["name"], labware_data["type"]]):
-                QMessageBox.warning(self, "Warning", "Please fill in all required fields.")
-                return
-            
-            success = self.controller.add_custom_labware(
-                labware_data["name"],
-                labware_data["type"],
-                labware_data["dimensions"],
-                labware_data["description"]
-            )
-            
-            if success:
-                self.info_text.append(f"\\n✓ Added custom labware: {labware_data['name']}")
-                self.update_labware_list()
-            else:
-                self.info_text.append(f"\\n✗ Failed to add custom labware")
+        self.controller.add_custom_labware()

@@ -7,6 +7,8 @@ import json
 import os
 from typing import Dict, Any, List, Optional, Tuple
 import Model.globals as globals
+import paths
+import requests
 
 class LabwareModel:
     """Model for handling labware declarations and configurations."""
@@ -136,25 +138,40 @@ class LabwareModel:
             print(f"Error clearing deck: {e}")
             return False
     
-    def add_custom_labware(self, name: str, labware_type: str, dimensions: Dict[str, int], 
-                          description: str = "") -> bool:
-        """Add a custom labware definition (type string only in available_labware)."""
-        try:
-            custom_labware = {
-                "name": name,
-                "type": labware_type,
-                "description": description,
-                "dimensions": dimensions,
-                "custom": True
-            }
-            self.labware_config["custom_labware"][labware_type] = custom_labware
-            if labware_type not in self.available_labware:
-                self.available_labware.append(labware_type)
-            self.save_labware_config()
-            return True
-        except Exception as e:
-            print(f"Error adding custom labware: {e}")
+    def add_custom_labware(self) -> bool:
+        if not globals.robot_initialized:
+            print("Robot not initialized. Please initialize first.")
             return False
+        protocols_dir = os.path.join(paths.BASE_DIR, 'protocols')
+        # Find all JSON files in the protocols directory
+        json_files = [f for f in os.listdir(protocols_dir) if f.endswith('.json')]
+
+        if not json_files:
+            print("No custom labware JSON files found.")
+            return False
+
+        success = True
+        for json_file_name in json_files:
+            custom_labware_path = os.path.join(protocols_dir, json_file_name)
+            try:
+                with open(custom_labware_path, 'r') as json_file:
+                    custom_labware = json.load(json_file)
+
+                command_dict = {
+                    "data": custom_labware
+                }
+                command_payload = json.dumps(command_dict)
+
+                url = globals.robot_api.get_url('runs') + f'/{globals.robot_api.run_id}/' + 'labware_definitions'
+                r = requests.post(url=url, headers=globals.robot_api.HEADERS, params={"waitUntilComplete": True}, data=command_payload)
+                if not r.ok:
+                    print(f"Failed to upload {json_file_name}: {r.text}")
+                    success = False
+            except Exception as e:
+                print(f"Error uploading {json_file_name}: {e}")
+                success = False
+
+        return success
     
     def remove_custom_labware(self, labware_type: str) -> bool:
         """Remove a custom labware definition."""

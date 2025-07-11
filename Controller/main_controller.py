@@ -268,11 +268,10 @@ class MainController:
         if success and self.labware_view:
             self.labware_view.update_deck_display()
         return success
-    
-    def add_custom_labware(self, name: str, labware_type: str, dimensions: Dict[str, int], 
-                          description: str = "") -> bool:
+
+    def add_custom_labware(self) -> bool:
         """Add custom labware definition."""
-        success = self.labware_model.add_custom_labware(name, labware_type, dimensions, description)
+        success = self.labware_model.add_custom_labware()
         if success and self.labware_view:
             self.labware_view.update_labware_list()
         return success
@@ -295,7 +294,7 @@ class MainController:
         # Stop all active cameras
         for camera_name in list(self.active_cameras.keys()):
             self.stop_camera_capture(camera_name)
-            
+
         self.labware_model.save_labware_config()
         
         print("Application cleanup completed")
