@@ -325,17 +325,18 @@ class LabwareView(QWidget):
     def update_labware_list(self):
         """Update the available labware list."""
         self.labware_list.clear()
-        
         labware_types = self.controller.get_available_labware()
-        
-        for labware in labware_types:
-            item = QListWidgetItem(f"{labware['name']} ({labware['type']})")
-            item.setData(Qt.ItemDataRole.UserRole, labware)
-            
-            # Add tooltip with description
-            if labware.get('description'):
-                item.setToolTip(labware['description'])
-            
+        custom_labware = self.controller.labware_model.labware_config.get("custom_labware", {})
+        for labware_type in labware_types:
+            # If custom, show name and description, else just type
+            if labware_type in custom_labware:
+                name = custom_labware[labware_type].get("name", labware_type)
+                desc = custom_labware[labware_type].get("description", "")
+                item = QListWidgetItem(f"{name} ({labware_type})")
+                item.setToolTip(desc)
+            else:
+                item = QListWidgetItem(labware_type)
+            item.setData(Qt.ItemDataRole.UserRole, labware_type)
             self.labware_list.addItem(item)
     
     def on_slot_clicked(self, slot_number):
@@ -344,18 +345,21 @@ class LabwareView(QWidget):
         self.assign_labware_btn.setEnabled(True)
         self.clear_slot_btn.setEnabled(True)
         self.selected_slot = slot_number
-        
+
         # Show slot information
         slot_info = self.controller.get_slot_info(f"slot_{slot_number}")
+        custom_labware = self.controller.labware_model.labware_config.get("custom_labware", {})
         if slot_info:
-            info_text = f"Slot {slot_number}:\\n"
-            info_text += f"Labware: {slot_info['labware_name']}\\n"
-            info_text += f"Type: {slot_info['labware_type']}\\n"
-            if slot_info['labware_info'].get('description'):
-                info_text += f"Description: {slot_info['labware_info']['description']}\\n"
+            info_text = f"Slot {slot_number}:\n"
+            info_text += f"Labware: {slot_info['labware_name']}\n"
+            info_text += f"Type: {slot_info['labware_type']}\n"
+            # Only show description if custom
+            if slot_info['labware_type'] in custom_labware:
+                desc = custom_labware[slot_info['labware_type']].get('description', '')
+                if desc:
+                    info_text += f"Description: {desc}\n"
         else:
             info_text = f"Slot {slot_number}: Empty"
-        
         self.info_text.setPlainText(info_text)
     
     def on_assign_labware(self):
@@ -363,23 +367,27 @@ class LabwareView(QWidget):
         if not hasattr(self, 'selected_slot'):
             QMessageBox.warning(self, "Warning", "Please select a slot first.")
             return
-        
+
         current_item = self.labware_list.currentItem()
         if not current_item:
             QMessageBox.warning(self, "Warning", "Please select a labware type.")
             return
-        
-        labware_data = current_item.data(Qt.ItemDataRole.UserRole)
-        success = self.controller.set_slot_labware(
-            f"slot_{self.selected_slot}", 
-            labware_data['type'], 
-            labware_data['name']
-        )
-        
-        if success:
-            self.info_text.append(f"\\n✓ Assigned {labware_data['name']} to slot {self.selected_slot}")
+
+        labware_type = current_item.data(Qt.ItemDataRole.UserRole)
+        custom_labware = self.controller.labware_model.labware_config.get("custom_labware", {})
+        if labware_type in custom_labware:
+            name = custom_labware[labware_type].get("name", labware_type)
         else:
-            self.info_text.append(f"\\n✗ Failed to assign labware to slot {self.selected_slot}")
+            name = labware_type
+        success = self.controller.set_slot_labware(
+            f"slot_{self.selected_slot}",
+            labware_type,
+            name
+        )
+        if success:
+            self.info_text.append(f"\n✓ Assigned {name} to slot {self.selected_slot}")
+        else:
+            self.info_text.append(f"\n✗ Failed to assign labware to slot {self.selected_slot}")
     
     def on_clear_slot(self):
         """Handle clear slot button click."""

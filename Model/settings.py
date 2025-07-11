@@ -15,8 +15,6 @@ class SettingsModel:
     """Model for handling settings and robot control operations."""
     
     def __init__(self, settings_file: str = "settings.json"):
-        self.settings_file = settings_file
-        self.settings = self.load_settings()
         self.lights_on = False
         self.current_run_info = {}
         self.active_threads=[]
@@ -48,56 +46,6 @@ class SettingsModel:
         self.active_threads.append(thread)
         thread.start()
         return thread
-    
-    def load_settings(self) -> Dict[str, Any]:
-        """Load settings from JSON file."""
-        if os.path.exists(self.settings_file):
-            try:
-                with open(self.settings_file, 'r') as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, IOError):
-                return self.get_default_settings()
-        return self.get_default_settings()
-    
-    def save_settings(self) -> None:
-        """Save current settings to JSON file."""
-        try:
-            with open(self.settings_file, 'w') as f:
-                json.dump(self.settings, f, indent=2)
-        except IOError as e:
-            print(f"Error saving settings: {e}")
-    
-    def get_default_settings(self) -> Dict[str, Any]:
-        """Get default settings configuration."""
-        return {
-            "robot_config": {
-                "port": "COM3",
-                "baudrate": 115200,
-                "timeout": 30
-            },
-            "slot_offsets": {
-                "x": 0.0,
-                "y": 0.0,
-                "z": 0.0
-            },
-            "pipette_config": {
-                "type": "p300_single",
-                "mount": "right"
-            },
-            "lighting": {
-                "brightness": 100,
-                "enabled": False
-            }
-        }
-    
-    def get_setting(self, key: str, default: Any = None) -> Any:
-        """Get a specific setting value."""
-        return self.settings.get(key, default)
-    
-    def set_setting(self, key: str, value: Any) -> None:
-        """Set a specific setting value."""
-        self.settings[key] = value
-        self.save_settings()
     
     # Robot control functions (placeholder implementations)
     

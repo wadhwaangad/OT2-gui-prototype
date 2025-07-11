@@ -56,10 +56,21 @@ class LabwareModel:
         }
     
     def get_available_labware(self) -> List[str]:
-        """Get list of available labware types."""
-        return ["corning_12_wellplate_6.9ml_flat","corning_24_wellplate_3.4ml_flat","corning_384_wellplate_112ul_flat","corning_48_wellplate_1.6ml_flat", 
-                "corning_6_wellplate_16.8ml_flat","corning_96_wellplate_360ul_flat","corning_96_wellplate_360ul_lid", "opentrons_96_tiprack_300ul"
+        """Get list of available labware types as strings."""
+        # Built-in labware types
+        built_in = [
+            "corning_12_wellplate_6.9ml_flat",
+            "corning_24_wellplate_3.4ml_flat",
+            "corning_384_wellplate_112ul_flat",
+            "corning_48_wellplate_1.6ml_flat",
+            "corning_6_wellplate_16.8ml_flat",
+            "corning_96_wellplate_360ul_flat",
+            "corning_96_wellplate_360ul_lid",
+            "opentrons_96_tiprack_300ul"
         ]
+        # Add custom labware types (just the type string)
+        custom = list(self.labware_config.get("custom_labware", {}).keys())
+        return built_in + custom
     
     def get_slot_configuration(self, slot: str) -> Optional[str]:
         """Get configuration for a specific deck slot."""
@@ -71,24 +82,25 @@ class LabwareModel:
             if slot not in self.labware_config["deck_layout"]:
                 print(f"Invalid slot: {slot}")
                 return False
-            
-            # Find labware info
-            labware_info = None
-            for labware in self.available_labware:
-                if labware["type"] == labware_type:
-                    labware_info = labware
-                    break
-            
-            if not labware_info:
+
+            # Only allow labware_type if it's in available_labware
+            if labware_type not in self.available_labware:
                 print(f"Unknown labware type: {labware_type}")
                 return False
-            
+
+            # For custom labware, get the name from config, else use type as name
+            custom_labware = self.labware_config.get("custom_labware", {})
+            if labware_type in custom_labware:
+                labware_name_final = custom_labware[labware_type].get("name", labware_type)
+            else:
+                labware_name_final = labware_type
+
             self.labware_config["deck_layout"][slot] = {
                 "labware_type": labware_type,
-                "labware_name": labware_name or labware_info["name"],
-                "labware_info": labware_info
+                "labware_name": labware_name or labware_name_final,
+                "labware_info": None  # No dict, just string type
             }
-            globals.robot_api.load_labware(labware_name, slot)
+            globals.robot_api.load_labware(labware_name or labware_name_final, slot)
             self.save_labware_config()
             return True
         except Exception as e:
@@ -126,7 +138,7 @@ class LabwareModel:
     
     def add_custom_labware(self, name: str, labware_type: str, dimensions: Dict[str, int], 
                           description: str = "") -> bool:
-        """Add a custom labware definition."""
+        """Add a custom labware definition (type string only in available_labware)."""
         try:
             custom_labware = {
                 "name": name,
@@ -135,9 +147,9 @@ class LabwareModel:
                 "dimensions": dimensions,
                 "custom": True
             }
-            
             self.labware_config["custom_labware"][labware_type] = custom_labware
-            self.available_labware.append(custom_labware)
+            if labware_type not in self.available_labware:
+                self.available_labware.append(labware_type)
             self.save_labware_config()
             return True
         except Exception as e:
@@ -149,11 +161,8 @@ class LabwareModel:
         try:
             if labware_type in self.labware_config["custom_labware"]:
                 del self.labware_config["custom_labware"][labware_type]
-                
-                # Remove from available labware list
-                self.available_labware = [lw for lw in self.available_labware 
-                                        if lw["type"] != labware_type]
-                
+                # Remove from available labware list (just string)
+                self.available_labware = [lw for lw in self.available_labware if lw != labware_type]
                 self.save_labware_config()
                 return True
             return False
@@ -236,11 +245,10 @@ class LabwareModel:
             print(f"Error importing deck layout: {e}")
             return False
     
-    def get_labware_by_type(self, labware_type: str) -> Optional[Dict[str, Any]]:
-        """Get labware information by type."""
-        for labware in self.available_labware:
-            if labware["type"] == labware_type:
-                return labware
+    def get_labware_by_type(self, labware_type: str) -> Optional[str]:
+        """Get labware type string if available."""
+        if labware_type in self.available_labware:
+            return labware_type
         return None
     
     def get_occupied_slots(self) -> List[str]:

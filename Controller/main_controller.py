@@ -295,9 +295,7 @@ class MainController:
         # Stop all active cameras
         for camera_name in list(self.active_cameras.keys()):
             self.stop_camera_capture(camera_name)
-        
-        # Save settings
-        self.settings_model.save_settings()
+            
         self.labware_model.save_labware_config()
         
         print("Application cleanup completed")

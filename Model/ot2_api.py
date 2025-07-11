@@ -196,7 +196,7 @@ class OpentronsAPI(Decorators):
                         if type(location) == dict:
                             self.labware_dct[location['slotName']] = labware_id
 
-        print(f'Total number of runs: {all_runs_json['meta']['totalLength']}')
+        print(f'Total number of runs: {all_runs_json["meta"]["totalLength"]}')
         print(f'Current run ID: {current_run_id}')
         print(f'Current run status: {current_run_status}')
         return data

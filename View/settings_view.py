@@ -131,60 +131,51 @@ class SettingsView(QWidget):
         group = QGroupBox("Configuration")
         layout = QGridLayout()
 
-        # Slot Offsets
-        layout.addWidget(QLabel("Slot Offsets:"), 0, 0)
+        # Axis Selection for Retraction (move to top)
+        layout.addWidget(QLabel("Retract Axis:"), 0, 0)
+        self.retract_axis_combo = QComboBox()
+        self.retract_axis_combo.addItems(["x", "y", "leftZ", "rightZ", "leftPlunger", "rightPlunger", "extensionZ", "extensionJaw", "axis96ChannelCam"])
+        layout.addWidget(self.retract_axis_combo, 0, 1)
 
-        # Slot selection list
-        layout.addWidget(QLabel("Select Slots:"), 0, 2)
+        # Slot Offsets label
+        layout.addWidget(QLabel("Slot Offsets:"), 1, 0, 1, 2)
+
+        # Slot selection list (expanded size)
+        layout.addWidget(QLabel("Select Slots:"), 2, 0, 1, 2)
         self.slot_list_widget = QListWidget()
         self.slot_list_widget.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-        # Example: add slots 1-12 (customize as needed)
+        self.slot_list_widget.setMinimumHeight(120)  # Make the slot list taller
+        self.slot_list_widget.setMinimumWidth(120)   # Make the slot list wider
         for i in range(1, 13):
             self.slot_list_widget.addItem(QListWidgetItem(str(i)))
-        layout.addWidget(self.slot_list_widget, 0, 3, 3, 1)
+        layout.addWidget(self.slot_list_widget, 3, 0, 1, 2)
 
-        layout.addWidget(QLabel("X:"), 1, 0)
+        # X, Y, Z spinboxes moved down and spaced out
+        layout.addWidget(QLabel("X:"), 4, 0)
         self.offset_x_spinbox = QDoubleSpinBox()
         self.offset_x_spinbox.setMinimum(-1000.0)
         self.offset_x_spinbox.setMaximum(1000.0)
         self.offset_x_spinbox.setDecimals(2)
-        layout.addWidget(self.offset_x_spinbox, 1, 1)
+        layout.addWidget(self.offset_x_spinbox, 4, 1)
 
-        layout.addWidget(QLabel("Y:"), 1, 2)
+        layout.addWidget(QLabel("Y:"), 5, 0)
         self.offset_y_spinbox = QDoubleSpinBox()
         self.offset_y_spinbox.setMinimum(-1000.0)
         self.offset_y_spinbox.setMaximum(1000.0)
         self.offset_y_spinbox.setDecimals(2)
-        layout.addWidget(self.offset_y_spinbox, 1, 3)
+        layout.addWidget(self.offset_y_spinbox, 5, 1)
 
-        layout.addWidget(QLabel("Z:"), 1, 4)
+        layout.addWidget(QLabel("Z:"), 6, 0)
         self.offset_z_spinbox = QDoubleSpinBox()
         self.offset_z_spinbox.setMinimum(-1000.0)
         self.offset_z_spinbox.setMaximum(1000.0)
         self.offset_z_spinbox.setDecimals(2)
-        layout.addWidget(self.offset_z_spinbox, 1, 5)
+        layout.addWidget(self.offset_z_spinbox, 6, 1)
 
         # Add Slot Offsets Button
         self.add_offsets_btn = QPushButton("Add Slot Offsets")
         self.add_offsets_btn.clicked.connect(self.on_add_slot_offsets)
-        layout.addWidget(self.add_offsets_btn, 2, 0, 1, 2)
-
-        # Pipette Configuration
-        layout.addWidget(QLabel("Pipette Type:"), 3, 0)
-        self.pipette_type_combo = QComboBox()
-        self.pipette_type_combo.addItems(["p300_single", "p300_multi", "p1000_single", "p20_single"])
-        layout.addWidget(self.pipette_type_combo, 3, 1)
-
-        layout.addWidget(QLabel("Mount:"), 3, 2)
-        self.mount_combo = QComboBox()
-        self.mount_combo.addItems(["left", "right"])
-        layout.addWidget(self.mount_combo, 3, 3)
-
-        # Axis Selection for Retraction
-        layout.addWidget(QLabel("Retract Axis:"), 4, 0)
-        self.retract_axis_combo = QComboBox()
-        self.retract_axis_combo.addItems(["x", "y", "leftZ", "rightZ", "leftPlunger", "rightPlunger", "extensionZ", "extensionJaw", "axis96ChannelCam"])
-        layout.addWidget(self.retract_axis_combo, 4, 1)
+        layout.addWidget(self.add_offsets_btn, 7, 0, 1, 2)
 
         group.setLayout(layout)
         return group
@@ -193,17 +184,8 @@ class SettingsView(QWidget):
         """Create additional functions group."""
         group = QGroupBox("Additional Functions")
         layout = QVBoxLayout()
-        
-        # Run configuration
-        run_config_layout = QHBoxLayout()
-        run_config_layout.addWidget(QLabel("Run Name:"))
-        self.run_name_edit = QLineEdit()
-        self.run_name_edit.setText("Default Run")
-        run_config_layout.addWidget(self.run_name_edit)
-        
-        layout.addLayout(run_config_layout)
-        
-        # Instructions
+
+        # Instructions (run name removed)
         instructions = QLabel("""
         Instructions:
         
@@ -214,14 +196,13 @@ class SettingsView(QWidget):
         5. Get Run Info: Retrieve current run status and information
         6. Retract Axis: Safely retract specified axis
         7. Create Run: Initialize a new experimental run
-        8. Load Pipette: Mount and configure pipette
         
         Note: Some functions require the robot to be initialized first.
         """)
         instructions.setWordWrap(True)
         instructions.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addWidget(instructions)
-        
+
         group.setLayout(layout)
         return group
     
@@ -302,30 +283,21 @@ class SettingsView(QWidget):
             self.show_result(False, "Failed to get run info")
     
     def on_create_run(self):
-        """Handle create run button click."""
-        run_name = self.run_name_edit.text().strip()
-        if not run_name:
-            QMessageBox.warning(self, "Warning", "Please enter a run name.")
-            return
-        
+        """Handle create run button click (run name removed)."""
         run_config = {
-            "name": run_name,
             "timestamp": "2025-01-01 12:00:00",
             "status": "created"
         }
-        
         self.show_progress("Creating run...")
         success = self.controller.create_run(run_config)
-        self.show_result(success, f"Run '{run_name}' created" if success else "Failed to create run")
+        self.show_result(success, "Run created" if success else "Failed to create run")
     
     def on_load_pipette(self):
-        """Handle load pipette button click."""
-        pipette_type = self.pipette_type_combo.currentText()
-        mount = self.mount_combo.currentText()
-        
-        self.show_progress(f"Loading {pipette_type} on {mount} mount...")
-        success = self.controller.load_pipette(pipette_type, mount)
-        self.show_result(success, f"Pipette loaded" if success else "Failed to load pipette")
+        """Handle load pipette button click (removed from UI, but method kept for compatibility)."""
+        self.show_progress("Loading pipette...")
+        # No pipette type or mount selection
+        success = self.controller.load_pipette(None, None)
+        self.show_result(success, "Pipette loaded" if success else "Failed to load pipette")
     
     def on_add_slot_offsets(self):
         """Handle add slot offsets button click."""
