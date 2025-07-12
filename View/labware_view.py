@@ -274,31 +274,7 @@ class LabwareView(QWidget):
         slot_group.setLayout(slot_layout)
         layout.addWidget(slot_group)
         
-        # Deck operations
-        deck_group = QGroupBox("Deck Operations")
-        deck_layout = QVBoxLayout()
-        
-        self.clear_deck_btn = QPushButton("Clear Entire Deck")
-        self.clear_deck_btn.clicked.connect(self.on_clear_deck)
-        deck_layout.addWidget(self.clear_deck_btn)
-        
-        self.validate_deck_btn = QPushButton("Validate Deck Layout")
-        self.validate_deck_btn.clicked.connect(self.on_validate_deck)
-        deck_layout.addWidget(self.validate_deck_btn)
-        
-        deck_layout.addWidget(QLabel("Import/Export:"))
-        
-        self.export_btn = QPushButton("Export Deck Layout")
-        self.export_btn.clicked.connect(self.on_export_deck)
-        deck_layout.addWidget(self.export_btn)
-        
-        self.import_btn = QPushButton("Import Deck Layout")
-        self.import_btn.clicked.connect(self.on_import_deck)
-        deck_layout.addWidget(self.import_btn)
-        
-        deck_group.setLayout(deck_layout)
-        layout.addWidget(deck_group)
-        
+       
         # Information panel
         info_group = QGroupBox("Information")
         info_layout = QVBoxLayout()
@@ -325,19 +301,8 @@ class LabwareView(QWidget):
     def update_labware_list(self):
         """Update the available labware list."""
         self.labware_list.clear()
-        labware_types = self.controller.get_available_labware()
-        custom_labware = self.controller.labware_model.labware_config.get("custom_labware", {})
-        for labware_type in labware_types:
-            # If custom, show name and description, else just type
-            if labware_type in custom_labware:
-                name = custom_labware[labware_type].get("name", labware_type)
-                desc = custom_labware[labware_type].get("description", "")
-                item = QListWidgetItem(f"{name} ({labware_type})")
-                item.setToolTip(desc)
-            else:
-                item = QListWidgetItem(labware_type)
-            item.setData(Qt.ItemDataRole.UserRole, labware_type)
-            self.labware_list.addItem(item)
+        self.labware_list = self.controller.get_available_labware()
+        
     
     def on_slot_clicked(self, slot_number):
         """Handle slot click events."""
@@ -408,57 +373,7 @@ class LabwareView(QWidget):
             else:
                 self.info_text.append(f"\\n✗ Failed to clear slot {self.selected_slot}")
     
-    def on_clear_deck(self):
-        """Handle clear deck button click."""
-        reply = QMessageBox.question(
-            self, "Confirm", 
-            "Are you sure you want to clear the entire deck?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            success = self.controller.clear_deck()
-            if success:
-                self.info_text.append("\\n✓ Cleared entire deck")
-            else:
-                self.info_text.append("\\n✗ Failed to clear deck")
     
-    def on_validate_deck(self):
-        """Handle validate deck button click."""
-        is_valid, issues = self.controller.validate_deck_layout()
-        
-        if is_valid:
-            self.info_text.append("\\n✓ Deck layout is valid")
-        else:
-            self.info_text.append("\\n✗ Deck layout validation failed:")
-            for issue in issues:
-                self.info_text.append(f"  - {issue}")
-    
-    def on_export_deck(self):
-        """Handle export deck button click."""
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Export Deck Layout", "", "JSON Files (*.json)"
-        )
-        
-        if filename:
-            success = self.controller.export_deck_layout(filename)
-            if success:
-                self.info_text.append(f"\\n✓ Exported deck layout to {filename}")
-            else:
-                self.info_text.append(f"\\n✗ Failed to export deck layout")
-    
-    def on_import_deck(self):
-        """Handle import deck button click."""
-        filename, _ = QFileDialog.getOpenFileName(
-            self, "Import Deck Layout", "", "JSON Files (*.json)"
-        )
-        
-        if filename:
-            success = self.controller.import_deck_layout(filename)
-            if success:
-                self.info_text.append(f"\\n✓ Imported deck layout from {filename}")
-            else:
-                self.info_text.append(f"\\n✗ Failed to import deck layout")
     
     def on_add_custom_labware(self):
         self.controller.add_custom_labware()
