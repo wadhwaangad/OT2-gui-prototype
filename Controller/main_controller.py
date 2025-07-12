@@ -30,6 +30,7 @@ class MainController:
         self.settings_view = None
         self.labware_view = None
         self.camera_view = None
+        self.manual_movement_view = None
     
     def set_views(self, main_view, settings_view, labware_view, camera_view):
         """Set references to view components."""
@@ -37,6 +38,7 @@ class MainController:
         self.settings_view = settings_view
         self.labware_view = labware_view
         self.camera_view = camera_view
+        self.manual_movement_view = manual_movement_view
     
     # Camera control methods
     def get_available_cameras(self) -> List[tuple]:

@@ -34,18 +34,63 @@ class CameraTestWindow(QDialog):
     
     def setup_ui(self):
         """Setup the user interface."""
+        import os, json
         layout = QVBoxLayout()
-        
+
         # Camera info
         info_layout = QHBoxLayout()
         info_layout.addWidget(QLabel(f"Camera: {self.camera_name}"))
         info_layout.addWidget(QLabel(f"Index: {self.camera_index}"))
         info_layout.addStretch()
-        
+
         # Camera controls
         controls_group = QGroupBox("Camera Controls")
         controls_layout = QHBoxLayout()
-        
+
+        # Resolution selection
+        res_layout = QVBoxLayout()
+        res_layout.addWidget(QLabel("Resolution:"))
+        res_input_layout = QHBoxLayout()
+        self.res_combo = QComboBox()
+        self.custom_width = None
+        self.custom_height = None
+        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cam_configs")
+        config_file = os.path.join(config_dir, f"{self.camera_name}.json")
+        resolutions = []
+        default_res = (640, 480)
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, "r") as f:
+                    config = json.load(f)
+                resolutions = config.get("resolutions", [])
+                default_res = tuple(config.get("default_resolution", [640, 480]))
+            except Exception:
+                resolutions = []
+                default_res = (640, 480)
+        if resolutions:
+            for w, h in resolutions:
+                self.res_combo.addItem(f"{w} x {h}", (w, h))
+            # Set to default resolution if present
+            default_index = 0
+            for i in range(self.res_combo.count()):
+                if self.res_combo.itemData(i) == default_res:
+                    default_index = i
+                    break
+            self.res_combo.setCurrentIndex(default_index)
+            res_input_layout.addWidget(self.res_combo)
+        else:
+            self.custom_width = QSpinBox()
+            self.custom_width.setRange(1, 10000)
+            self.custom_width.setValue(default_res[0])
+            self.custom_width.setPrefix("W: ")
+            self.custom_height = QSpinBox()
+            self.custom_height.setRange(1, 10000)
+            self.custom_height.setValue(default_res[1])
+            self.custom_height.setPrefix("H: ")
+            res_input_layout.addWidget(self.custom_width)
+            res_input_layout.addWidget(self.custom_height)
+        res_layout.addLayout(res_input_layout)
+
         # Focus control
         focus_layout = QVBoxLayout()
         focus_layout.addWidget(QLabel("Focus:"))
@@ -68,17 +113,18 @@ class CameraTestWindow(QDialog):
         focus_layout.addLayout(focus_input_layout)
         self.focus_value_label = QLabel("900")
         focus_layout.addWidget(self.focus_value_label)
-        
+
         # Control buttons
         button_layout = QVBoxLayout()
         self.reset_view_btn = QPushButton("Reset View")
         self.reset_view_btn.clicked.connect(self.reset_view)
         button_layout.addWidget(self.reset_view_btn)
-        
+
         self.capture_btn = QPushButton("Stop Capture")
         self.capture_btn.clicked.connect(self.toggle_capture)
         button_layout.addWidget(self.capture_btn)
-        
+
+        controls_layout.addLayout(res_layout)
         controls_layout.addLayout(focus_layout)
         controls_layout.addLayout(button_layout)
         controls_layout.addStretch()
@@ -86,18 +132,25 @@ class CameraTestWindow(QDialog):
 
         # Video display
         self.video_display = VideoDisplayWidget()
-        
+
         # Button box
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         button_box.rejected.connect(self.close)
-        
+
         # Add to main layout
         layout.addLayout(info_layout)
         layout.addWidget(controls_group)
         layout.addWidget(self.video_display)
         layout.addWidget(button_box)
-        
+
         self.setLayout(layout)
+
+    def get_selected_resolution(self):
+        if self.res_combo and self.res_combo.count() > 0:
+            return self.res_combo.currentData()
+        elif self.custom_width and self.custom_height:
+            return (self.custom_width.value(), self.custom_height.value())
+        return (640, 480)
 
     def on_focus_max_changed(self, value):
         """Update the maximum value of the focus slider."""
@@ -114,12 +167,14 @@ class CameraTestWindow(QDialog):
     
     def start_capture(self):
         """Start camera capture."""
+        width, height = self.get_selected_resolution()
         success = self.controller.start_camera_capture(
-            self.camera_name, 
+            self.camera_name,
             self.camera_index,
+            width=width,
+            height=height,
             focus=self.focus_slider.value()
         )
-        
         if success:
             self.is_capturing = True
             self.capture_btn.setText("Stop Capture")
@@ -203,36 +258,36 @@ class CameraView(QWidget):
         self.camera_list.itemSelectionChanged.connect(self.on_camera_selection_changed)
     
     def create_left_panel(self):
-        """Create the left control panel."""
+        import os, json
         left_widget = QWidget()
         layout = QVBoxLayout()
-        
+
         # Camera list group
         camera_group = QGroupBox("Available Cameras")
         camera_layout = QVBoxLayout()
-        
+
         # Camera list
         self.camera_list = QListWidget()
         self.camera_list.itemDoubleClicked.connect(self.on_camera_double_clicked)
         camera_layout.addWidget(self.camera_list)
-        
+
         # Refresh button
         self.refresh_btn = QPushButton("Refresh Cameras")
         self.refresh_btn.clicked.connect(self.refresh_cameras)
         camera_layout.addWidget(self.refresh_btn)
-        
+
         camera_group.setLayout(camera_layout)
         layout.addWidget(camera_group)
-        
+
         # Camera controls group
         controls_group = QGroupBox("Camera Controls")
         controls_layout = QVBoxLayout()
-        
+
         # Selected camera info
         self.selected_camera_label = QLabel("No camera selected")
         self.selected_camera_label.setStyleSheet("font-weight: bold; color: #0066cc;")
         controls_layout.addWidget(self.selected_camera_label)
-        
+
         # Display option
         display_layout = QHBoxLayout()
         display_layout.addWidget(QLabel("Display:"))
@@ -240,13 +295,29 @@ class CameraView(QWidget):
         self.display_combo.addItems(["Embedded View", "Separate Window"])
         display_layout.addWidget(self.display_combo)
         controls_layout.addLayout(display_layout)
-        
+
+        # Resolution selection
+        res_layout = QHBoxLayout()
+        res_layout.addWidget(QLabel("Resolution:"))
+        self.res_combo = QComboBox()
+        self.custom_width = QSpinBox()
+        self.custom_height = QSpinBox()
+        self.custom_width.setRange(1, 10000)
+        self.custom_height.setRange(1, 10000)
+        self.res_combo.hide()
+        self.custom_width.hide()
+        self.custom_height.hide()
+        res_layout.addWidget(self.res_combo)
+        res_layout.addWidget(self.custom_width)
+        res_layout.addWidget(self.custom_height)
+        controls_layout.addLayout(res_layout)
+
         # Start/Stop camera button
         self.start_stop_btn = QPushButton("Start Camera")
         self.start_stop_btn.clicked.connect(self.toggle_selected_camera)
         self.start_stop_btn.setEnabled(False)
         controls_layout.addWidget(self.start_stop_btn)
-        
+
         # Focus control
         focus_layout = QVBoxLayout()
         focus_layout.addWidget(QLabel("Focus:"))
@@ -277,47 +348,48 @@ class CameraView(QWidget):
         self.reset_view_btn.clicked.connect(self.reset_embedded_view)
         self.reset_view_btn.setEnabled(False)
         controls_layout.addWidget(self.reset_view_btn)
-        
+
         # Stop all cameras button
         self.stop_all_btn = QPushButton("Stop All Cameras")
         self.stop_all_btn.clicked.connect(self.stop_all_cameras)
         controls_layout.addWidget(self.stop_all_btn)
-        
+
         controls_group.setLayout(controls_layout)
         layout.addWidget(controls_group)
-        
+
         # Instructions
         instructions_group = QGroupBox("Instructions")
         instructions_layout = QVBoxLayout()
-        
+
         instructions = QLabel("""
         Camera Controls:
-        
+
         • Select a camera from the list
         • Choose display mode (Embedded/Window)
+        • Set resolution (preset or custom)
         • Click "Start Camera" to begin capture
         • Use focus slider to adjust camera focus
         • Double-click camera list for separate window
-        
+
         Embedded View Controls:
         • Mouse wheel: Zoom in/out
         • Click and drag: Pan around
         • Double-click: Reset view
         • Reset View button: Center and reset zoom
-        
+
         Tips:
         • Multiple cameras can run simultaneously
         • Focus adjustment works in real-time
         • Embedded view is zoomable and pannable
         """)
-        
+
         instructions.setWordWrap(True)
         instructions.setAlignment(Qt.AlignmentFlag.AlignTop)
         instructions_layout.addWidget(instructions)
-        
+
         instructions_group.setLayout(instructions_layout)
         layout.addWidget(instructions_group)
-        
+
         left_widget.setLayout(layout)
         left_widget.setMaximumWidth(400)
         return left_widget
@@ -373,15 +445,52 @@ class CameraView(QWidget):
             self.camera_list.addItem(item)
     
     def on_camera_selection_changed(self):
-        """Handle camera selection changes."""
+        import os, json
         current_item = self.camera_list.currentItem()
         if current_item and current_item.data(Qt.ItemDataRole.UserRole) is not None:
             camera_data = current_item.data(Qt.ItemDataRole.UserRole)
             camera_name, camera_index = camera_data
-            
             self.selected_camera_label.setText(f"Selected: {camera_name}")
+            # Show resolution options
+            config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cam_configs")
+            config_file = os.path.join(config_dir, f"{camera_name}.json")
+            self.res_combo.clear()
+            default_res = (640, 480)
+            if os.path.exists(config_file):
+                try:
+                    with open(config_file, "r") as f:
+                        config = json.load(f)
+                    resolutions = config.get("resolutions", [])
+                    default_res = tuple(config.get("default_resolution", [640, 480]))
+                except Exception:
+                    resolutions = []
+                    default_res = (640, 480)
+                if resolutions:
+                    self.res_combo.show()
+                    self.custom_width.hide()
+                    self.custom_height.hide()
+                    for w, h in resolutions:
+                        self.res_combo.addItem(f"{w} x {h}", (w, h))
+                    # Set to default resolution if present
+                    default_index = 0
+                    for i in range(self.res_combo.count()):
+                        if self.res_combo.itemData(i) == default_res:
+                            default_index = i
+                            break
+                    self.res_combo.setCurrentIndex(default_index)
+                else:
+                    self.res_combo.hide()
+                    self.custom_width.show()
+                    self.custom_height.show()
+                    self.custom_width.setValue(default_res[0])
+                    self.custom_height.setValue(default_res[1])
+            else:
+                self.res_combo.hide()
+                self.custom_width.show()
+                self.custom_height.show()
+                self.custom_width.setValue(default_res[0])
+                self.custom_height.setValue(default_res[1])
             self.start_stop_btn.setEnabled(True)
-            
             # Update button text based on current state
             if camera_name in self.active_embedded_cameras:
                 self.start_stop_btn.setText("Stop Camera")
@@ -393,6 +502,9 @@ class CameraView(QWidget):
                 self.reset_view_btn.setEnabled(False)
         else:
             self.selected_camera_label.setText("No camera selected")
+            self.res_combo.hide()
+            self.custom_width.hide()
+            self.custom_height.hide()
             self.start_stop_btn.setEnabled(False)
             self.focus_slider.setEnabled(False)
             self.reset_view_btn.setEnabled(False)
@@ -427,14 +539,20 @@ class CameraView(QWidget):
             if self.active_embedded_cameras:
                 for active_name in list(self.active_embedded_cameras.keys()):
                     self.stop_embedded_camera(active_name)
-            
+            # Get selected resolution
+            if self.res_combo.isVisible() and self.res_combo.count() > 0:
+                width, height = self.res_combo.currentData()
+            else:
+                width = self.custom_width.value()
+                height = self.custom_height.value()
             # Start new camera
             success = self.controller.start_camera_capture(
-                camera_name, 
+                camera_name,
                 camera_index,
+                width=width,
+                height=height,
                 focus=self.focus_slider.value()
             )
-            
             if success:
                 self.active_embedded_cameras[camera_name] = camera_index
                 self.active_camera_label.setText(f"Active: {camera_name}")

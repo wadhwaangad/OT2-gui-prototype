@@ -59,6 +59,11 @@ class MainWindow(QMainWindow):
         # Camera View tab
         self.camera_view = CameraView(self.controller)
         self.tab_widget.addTab(self.camera_view, "Camera View")
+        
+        # Manual Movement tab
+        from View.manual_movement_view import ManualMovementView
+        self.manual_movement_view = ManualMovementView(self.controller.manual_movement_controller)
+        self.tab_widget.addTab(self.manual_movement_view, "Manual Movement")
     
     def setup_menu(self):
         """Setup the menu bar."""

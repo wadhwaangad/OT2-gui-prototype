@@ -17,6 +17,7 @@ class LabwareModel:
         self.labware_file = labware_file
         self.labware_config = self.load_labware_config()
         self.available_labware = self.get_available_labware()
+        self.custom_labware = False
         
     def load_labware_config(self) -> Dict[str, Any]:
         """Load labware configuration from JSON file."""
@@ -52,14 +53,11 @@ class LabwareModel:
                 "slot_10": None,
                 "slot_11": None,
                 "slot_12": None
-            },
-            "custom_labware": {},
-            "current_protocol": None
+            }
         }
     
     def get_available_labware(self) -> List[str]:
-        """Get list of available labware types as strings."""
-        # Built-in labware types
+        """Get list of available labware types as strings, including protocol JSONs."""
         built_in = [
             "corning_12_wellplate_6.9ml_flat",
             "corning_24_wellplate_3.4ml_flat",
@@ -70,10 +68,16 @@ class LabwareModel:
             "corning_96_wellplate_360ul_lid",
             "opentrons_96_tiprack_300ul"
         ]
-        # Add custom labware types (just the type string)
-        custom = list(self.labware_config.get("custom_labware", {}).keys())
-        return built_in + custom
-    
+        # Add protocol JSONs (without .json extension)
+        protocols_dir = os.path.join(paths.BASE_DIR, 'protocols')
+        protocol_labware = []
+        if os.path.isdir(protocols_dir):
+            for f in os.listdir(protocols_dir):
+                if f.endswith('.json'):
+                    protocol_labware.append(os.path.splitext(f)[0])
+        if self.custom_labware:
+            return built_in + protocol_labware
+        return built_in
     def get_slot_configuration(self, slot: str) -> Optional[str]:
         """Get configuration for a specific deck slot."""
         return self.labware_config["deck_layout"].get(slot)
@@ -170,7 +174,7 @@ class LabwareModel:
             except Exception as e:
                 print(f"Error uploading {json_file_name}: {e}")
                 success = False
-
+        self.custom_labware = True
         return success
     
     def remove_custom_labware(self, labware_type: str) -> bool:
