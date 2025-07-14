@@ -301,7 +301,13 @@ class LabwareView(QWidget):
     def update_labware_list(self):
         """Update the available labware list."""
         self.labware_list.clear()
-        self.labware_list = self.controller.get_available_labware()
+        self.available_labware = self.controller.get_available_labware()
+        
+        # Add labware items to the list widget
+        for labware_type in self.available_labware:
+            item = QListWidgetItem(labware_type)
+            item.setData(Qt.ItemDataRole.UserRole, labware_type)
+            self.labware_list.addItem(item)
         
     
     def on_slot_clicked(self, slot_number):

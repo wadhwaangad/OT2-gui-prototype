@@ -14,7 +14,7 @@ import Model.globals as globals
 class SettingsModel:
     """Model for handling settings and robot control operations."""
     
-    def __init__(self, settings_file: str = "settings.json"):
+    def __init__(self):
         self.lights_on = False
         self.current_run_info = {}
         self.active_threads=[]
@@ -64,11 +64,7 @@ class SettingsModel:
     def add_slot_offsets(self, slots: list[int], x: float, y: float, z: float) -> bool:
         """Add slot offsets to the robot configuration."""
         try:
-            # TODO: Implement actual slot offset addition
             globals.robot_api.add_slot_offsets(slots,(x, y, z))
-            print(f"Adding slot offsets: X={x}, Y={y}, Z={z}")
-            self.settings["slot_offsets"] = {"x": x, "y": y, "z": z}
-            self.save_settings()
             return True
         except Exception as e:
             print(f"Error adding slot offsets: {e}")
@@ -80,9 +76,7 @@ class SettingsModel:
             globals.robot_api.toggle_lights()
             self.lights_on = not self.lights_on
             print(f"Lights {'ON' if self.lights_on else 'OFF'}")
-            self.settings["lighting"]["enabled"] = self.lights_on
-            self.save_settings()
-            return True
+
         except Exception as e:
             print(f"Error toggling lights: {e}")
             return False
@@ -126,7 +120,6 @@ class SettingsModel:
     def create_run(self, run_config: Dict[str, Any]) -> bool:
         """Create a new run with the given configuration."""
         try:
-            # TODO: Implement actual run creation
             globals.robot_api.create_run()
             print(f"Creating run with config: {run_config}")
             return True
@@ -134,15 +127,10 @@ class SettingsModel:
             print(f"Error creating run: {e}")
             return False
     
-    def load_pipette(self, pipette_type: str, mount: str) -> bool:
+    def load_pipette(self) -> bool:
         """Load a pipette of the specified type and mount."""
         try:
             globals.robot_api.load_pipette()
-            # TODO: Implement actual pipette loading
-            print(f"Loading pipette: {pipette_type} on {mount} mount")
-            self.settings["pipette_config"]["type"] = pipette_type
-            self.settings["pipette_config"]["mount"] = mount
-            self.save_settings()
             return True
         except Exception as e:
             print(f"Error loading pipette: {e}")

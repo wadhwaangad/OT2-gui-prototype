@@ -4,6 +4,7 @@ Manages communication between models and views.
 """
 
 from typing import Dict, Any, List, Optional
+from unittest import result
 from Model.camera import CameraManagerWindows, MultiprocessVideoCapture
 from Model.settings import SettingsModel
 from Model.labware import LabwareModel
@@ -53,9 +54,6 @@ class MainController:
                 camera_labels = json.load(f)
         except Exception:
             camera_labels = {}
-
-        # Reverse mapping: label -> config filename
-        label_to_config = {v: k for k, v in camera_labels.items()}
 
         cameras = self.camera_manager.get_available_cameras()
         labeled_cameras = []
@@ -207,22 +205,22 @@ class MainController:
     def placeholder_function_3(self, on_result=None, on_error=None, on_finished=None):
         """Placeholder function 3 in a thread."""
         return self.settings_model.run_in_thread(self.settings_model.placeholder_function_3, on_result=on_result, on_error=on_error, on_finished=on_finished)
+
+    def update_robot_status(self):
+        """Update robot status display - only captures StreamRedirector output."""
+        # This method exists to maintain the timer structure
+        # All actual status updates come through the StreamRedirector
+        pass
     
-    def get_settings(self) -> Dict[str, Any]:
-        """Get current settings."""
-        return self.settings_model.settings
-    
-    def update_setting(self, key: str, value: Any) -> bool:
-        """Update a specific setting."""
-        try:
-            self.settings_model.set_setting(key, value)
-            return True
-        except Exception as e:
-            print(f"Error updating setting: {e}")
-            return False
+    def get_robot_status(self) -> Dict[str, Any]:
+        """Get current robot status information."""
+        return {
+            'initialized': self.settings_model.is_robot_initialized(),
+            'lights_on': self.settings_model.get_lights_status()
+        }
     
     # Labware control methods
-    def get_available_labware(self) -> List[Dict[str, Any]]:
+    def get_available_labware(self) -> List[str]:
         """Get list of available labware."""
         return self.labware_model.get_available_labware()
     
@@ -240,35 +238,11 @@ class MainController:
     def clear_slot(self, slot: str) -> bool:
         """Clear labware from a specific slot."""
         success = self.labware_model.clear_slot(slot)
-        if success and self.labware_view:
-            self.labware_view.update_deck_display()
-        return success
-    
-    def clear_deck(self) -> bool:
-        """Clear all labware from deck."""
-        success = self.labware_model.clear_deck()
-        if success and self.labware_view:
-            self.labware_view.update_deck_display()
-        return success
-    
-    def validate_deck_layout(self) -> tuple:
-        """Validate current deck layout."""
-        return self.labware_model.validate_deck_layout()
-    
-    def export_deck_layout(self, filename: str) -> bool:
-        """Export deck layout to file."""
-        return self.labware_model.export_deck_layout(filename)
-    
-    def import_deck_layout(self, filename: str) -> bool:
-        """Import deck layout from file."""
-        success = self.labware_model.import_deck_layout(filename)
-        if success and self.labware_view:
-            self.labware_view.update_deck_display()
         return success
 
     def add_custom_labware(self) -> bool:
         """Add custom labware definition."""
-        success = self.labware_model.add_custom_labware()
+        success = self.labware_model.run_in_thread(self.labware_model.add_custom_labware,on_result=result, on_error=on_error, on_finished=on_finished)
         if success and self.labware_view:
             self.labware_view.update_labware_list()
         return success
@@ -289,21 +263,21 @@ class MainController:
     def drop_tip_in_place(self) -> bool:
         """Drop tip in place."""
         try:
-            self.manual_movement_model.drop_tip_in_place()
+            self.manual_movement_model.run_in_thread(self.manual_movement_model.drop_tip_in_place())
             print("Tip dropped in place")
             return True
         except Exception as e:
             print(f"Error dropping tip: {e}")
             return False
     
-    def move_down(self) -> bool:
-        """Move robot down."""
+    def stop(self) -> bool:
+        """Stop robot movement."""
         try:
-            self.manual_movement_model.move_down()
-            print("Robot moved down")
+            self.manual_movement_model.run_in_thread(self.manual_movement_model.stop)
+            print("Robot stopped")
             return True
         except Exception as e:
-            print(f"Error moving down: {e}")
+            print(f"Error stopping robot: {e}")
             return False
     
     def move_left(self) -> bool:

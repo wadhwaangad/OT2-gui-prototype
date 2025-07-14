@@ -112,8 +112,8 @@ class SettingsView(QWidget):
         return group
     
     def create_status_group(self):
-        """Create robot status group."""
-        group = QGroupBox("Robot Status")
+        """Create general status group."""
+        group = QGroupBox("General Status")
         layout = QVBoxLayout()
         
         # Status display
@@ -211,11 +211,10 @@ class SettingsView(QWidget):
         """Setup timer for status updates."""
         self.status_timer = QTimer()
         self.status_timer.timeout.connect(self.update_robot_status)
-        self.status_timer.start(2000)  # Update every 2 seconds
+        self.status_timer.start(100)  # Update every 2 seconds
     
     def update_robot_status(self):
         """Update robot status display - only captures StreamRedirector output."""
-        # This method exists to maintain the timer structure
         # All actual status updates come through the StreamRedirector
         pass
     

@@ -131,7 +131,7 @@ class MainWindow(QMainWindow):
         # Setup status update timer
         self.status_timer = QTimer()
         self.status_timer.timeout.connect(self.update_status)
-        self.status_timer.start(5000)  # Update every 5 seconds
+        self.status_timer.start(100)  # Update every 5 seconds
     
     def update_status(self):
         """Update the status bar with current information."""

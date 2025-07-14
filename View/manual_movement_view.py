@@ -33,11 +33,11 @@ class ManualMovementView(QWidget):
         self.right_btn = QPushButton("Right")
         self.right_btn.clicked.connect(self.on_move_right)
         movement_layout.addWidget(self.right_btn, 1, 2)
-        
-        self.down_btn = QPushButton("Down")
-        self.down_btn.clicked.connect(self.on_move_down)
-        movement_layout.addWidget(self.down_btn, 2, 1)
-        
+
+        self.stop_btn = QPushButton("Stop")
+        self.stop_btn.clicked.connect(self.on_stop)
+        movement_layout.addWidget(self.stop_btn, 2, 1)
+
         # Forward/Backward buttons
         self.forward_btn = QPushButton("Forward")
         self.forward_btn.clicked.connect(self.on_move_forward)
@@ -48,7 +48,7 @@ class ManualMovementView(QWidget):
         movement_layout.addWidget(self.backward_btn, 2, 3)
         
         # Set button sizes
-        for button in [self.up_btn, self.down_btn, self.left_btn, self.right_btn, 
+        for button in [self.up_btn, self.stop_btn, self.left_btn, self.right_btn, 
                       self.forward_btn, self.backward_btn]:
             button.setMinimumSize(80, 40)
         
@@ -66,12 +66,12 @@ class ManualMovementView(QWidget):
         if not success:
             print("Failed to drop tip in place")
     
-    def on_move_down(self):
-        """Handle move down button action."""
-        success = self.controller.move_down()
+    def on_stop(self):
+        """Handle stop button action."""
+        success = self.controller.stop()
         if not success:
-            print("Failed to move down")
-    
+            print("Failed to stop")
+
     def on_move_left(self):
         """Handle move left button action."""
         success = self.controller.move_left()
