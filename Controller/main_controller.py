@@ -242,7 +242,7 @@ class MainController:
 
     def add_custom_labware(self) -> bool:
         """Add custom labware definition."""
-        success = self.labware_model.run_in_thread(self.labware_model.add_custom_labware,on_result=result, on_error=on_error, on_finished=on_finished)
+        success = self.labware_model.add_custom_labware()
         if success and self.labware_view:
             self.labware_view.update_labware_list()
         return success

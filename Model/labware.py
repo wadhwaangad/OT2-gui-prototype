@@ -20,35 +20,6 @@ class LabwareModel:
         self.labware_config = self.load_labware_config()
         self.custom_labware = False
         self.available_labware = self.get_available_labware()
-        self.active_threads = []
-
-    def run_in_thread(self, fn, *args, on_result=None, on_error=None, on_finished=None, **kwargs):
-        """Run a function in a separate thread using Worker."""
-        thread = QThread()
-        worker = Worker(fn, *args, **kwargs)
-        worker.moveToThread(thread)
-
-        if on_result:
-            worker.result.connect(on_result)
-        if on_error:
-            worker.error.connect(on_error)
-        if on_finished:
-            worker.finished.connect(on_finished)
-
-        def cleanup():
-            if thread in self.active_threads:
-                self.active_threads.remove(thread)
-            thread.quit()
-            thread.wait()  # Wait for thread to finish
-            worker.deleteLater()
-            thread.deleteLater()
-
-        worker.finished.connect(cleanup)
-        thread.started.connect(worker.run)
-
-        self.active_threads.append(thread)
-        thread.start()
-        return thread
     
         
     def load_labware_config(self) -> Dict[str, Any]:
@@ -167,18 +138,18 @@ class LabwareModel:
         for json_file_name in json_files:
             custom_labware_path = os.path.join(protocols_dir, json_file_name)
             try:
-                with open(custom_labware_path, 'r') as json_file:
+                with open(custom_labware_path, 'r', encoding='utf-8') as json_file:
                     custom_labware = json.load(json_file)
 
                 command_dict = {
                     "data": custom_labware
                 }
                 command_payload = json.dumps(command_dict)
+                with open(f"{os.path.splitext(json_file_name)[0]}_payload.json", "w") as payload_file:
+                    json.dump(command_dict, payload_file, indent=2)
 
                 url = globals.robot_api.get_url('runs') + f'/{globals.robot_api.run_id}/' + 'labware_definitions'
-                print(command_payload)
                 r = requests.post(url=url, headers=globals.robot_api.HEADERS, params={"waitUntilComplete": True}, data=command_payload)
-                print(json.loads(r.text))
                 if not r.ok:
                     print(f"Failed to upload {json_file_name}: {r.text}")
                     success = False
