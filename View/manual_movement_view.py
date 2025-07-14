@@ -22,8 +22,8 @@ class ManualMovementView(QWidget):
         movement_layout = QGridLayout()
         
         # Create movement buttons in a cross pattern
-        self.up_btn = QPushButton("Up")
-        self.up_btn.clicked.connect(self.on_move_up)
+        self.up_btn = QPushButton("Drop Tip in Place")
+        self.up_btn.clicked.connect(self.on_drop_tip_in_place)
         movement_layout.addWidget(self.up_btn, 0, 1)
         
         self.left_btn = QPushButton("Left")
@@ -60,11 +60,11 @@ class ManualMovementView(QWidget):
         
         self.setLayout(layout)
     
-    def on_move_up(self):
-        """Handle move up button action."""
-        success = self.controller.move_up()
+    def on_drop_tip_in_place(self):
+        """Drop tip in place."""
+        success = self.controller.drop_tip_in_place()
         if not success:
-            print("Failed to move up")
+            print("Failed to drop tip in place")
     
     def on_move_down(self):
         """Handle move down button action."""

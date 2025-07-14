@@ -286,14 +286,14 @@ class MainController:
         return self.labware_model.get_empty_slots()
     
     # Manual movement control methods
-    def move_up(self) -> bool:
-        """Move robot up."""
+    def drop_tip_in_place(self) -> bool:
+        """Drop tip in place."""
         try:
-            self.manual_movement_model.move_up()
-            print("Robot moved up")
+            self.manual_movement_model.drop_tip_in_place()
+            print("Tip dropped in place")
             return True
         except Exception as e:
-            print(f"Error moving up: {e}")
+            print(f"Error dropping tip: {e}")
             return False
     
     def move_down(self) -> bool:

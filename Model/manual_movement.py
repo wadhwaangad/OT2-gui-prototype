@@ -6,9 +6,9 @@ class ManualMovementModel:
         pass
 
     
-    def move_up(self):
+    def drop_tip_in_place(self):
         """Placeholder for move up action."""
-        pass
+        globals.robot_api.drop_tip_in_place()
         
 
     def move_down(self):
