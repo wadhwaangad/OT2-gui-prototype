@@ -62,7 +62,7 @@ class MainWindow(QMainWindow):
         
         # Manual Movement tab
         from View.manual_movement_view import ManualMovementView
-        self.manual_movement_view = ManualMovementView(self.controller.manual_movement_controller)
+        self.manual_movement_view = ManualMovementView(self.controller)
         self.tab_widget.addTab(self.manual_movement_view, "Manual Movement")
     
     def setup_menu(self):

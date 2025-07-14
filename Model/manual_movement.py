@@ -3,10 +3,12 @@ import Model.globals as globals
 class ManualMovementModel:
     """Placeholder model for manual movement controls."""
     def __init__(self):
-        
+        pass
+
     
     def move_up(self):
         """Placeholder for move up action."""
+        pass
         
 
     def move_down(self):

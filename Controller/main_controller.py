@@ -12,6 +12,7 @@ import os
 import json
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from paths import CAM_CONFIGS_DIR
+from Model.manual_movement import ManualMovementModel
 
 
 class MainController:
@@ -22,6 +23,8 @@ class MainController:
         self.camera_manager = CameraManagerWindows()
         self.settings_model = SettingsModel()
         self.labware_model = LabwareModel()
+        self.manual_movement_model = ManualMovementModel()
+        
         # Active camera captures
         self.active_cameras: Dict[str, MultiprocessVideoCapture] = {}
         
@@ -38,7 +41,7 @@ class MainController:
         self.settings_view = settings_view
         self.labware_view = labware_view
         self.camera_view = camera_view
-        self.manual_movement_view = manual_movement_view
+        # The manual movement view is set in main.py when the tab is created
     
     # Camera control methods
     def get_available_cameras(self) -> List[tuple]:
@@ -205,14 +208,6 @@ class MainController:
         """Placeholder function 3 in a thread."""
         return self.settings_model.run_in_thread(self.settings_model.placeholder_function_3, on_result=on_result, on_error=on_error, on_finished=on_finished)
     
-    def get_robot_status(self) -> Dict[str, Any]:
-        """Get current robot status."""
-        return {
-            "initialized": self.settings_model.is_robot_initialized(),
-            "lights_on": self.settings_model.get_lights_status(),
-            "run_info": self.settings_model.current_run_info
-        }
-    
     def get_settings(self) -> Dict[str, Any]:
         """Get current settings."""
         return self.settings_model.settings
@@ -289,6 +284,67 @@ class MainController:
     def get_empty_slots(self) -> List[str]:
         """Get list of empty slots."""
         return self.labware_model.get_empty_slots()
+    
+    # Manual movement control methods
+    def move_up(self) -> bool:
+        """Move robot up."""
+        try:
+            self.manual_movement_model.move_up()
+            print("Robot moved up")
+            return True
+        except Exception as e:
+            print(f"Error moving up: {e}")
+            return False
+    
+    def move_down(self) -> bool:
+        """Move robot down."""
+        try:
+            self.manual_movement_model.move_down()
+            print("Robot moved down")
+            return True
+        except Exception as e:
+            print(f"Error moving down: {e}")
+            return False
+    
+    def move_left(self) -> bool:
+        """Move robot left."""
+        try:
+            self.manual_movement_model.move_left()
+            print("Robot moved left")
+            return True
+        except Exception as e:
+            print(f"Error moving left: {e}")
+            return False
+    
+    def move_right(self) -> bool:
+        """Move robot right."""
+        try:
+            self.manual_movement_model.move_right()
+            print("Robot moved right")
+            return True
+        except Exception as e:
+            print(f"Error moving right: {e}")
+            return False
+    
+    def move_forward(self) -> bool:
+        """Move robot forward."""
+        try:
+            self.manual_movement_model.move_forward()
+            print("Robot moved forward")
+            return True
+        except Exception as e:
+            print(f"Error moving forward: {e}")
+            return False
+    
+    def move_backward(self) -> bool:
+        """Move robot backward."""
+        try:
+            self.manual_movement_model.move_backward()
+            print("Robot moved backward")
+            return True
+        except Exception as e:
+            print(f"Error moving backward: {e}")
+            return False
     
     # Cleanup methods
     def cleanup(self):

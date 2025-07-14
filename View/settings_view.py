@@ -2,11 +2,13 @@
 Settings view for the microtissue manipulator GUI.
 """
 
+import sys
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, 
                            QPushButton, QLabel, QGroupBox, QMessageBox, QProgressBar,
                            QDoubleSpinBox, QLineEdit, QComboBox, QTextEdit, QScrollArea, QListWidget, QListWidgetItem)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
+from Model.redirector import StreamRedirector
 
 
 class SettingsView(QWidget):
@@ -18,6 +20,8 @@ class SettingsView(QWidget):
         self.setup_ui()
         self.setup_status_timer()
         self.update_robot_status()
+        self.output_redirector = StreamRedirector(self.status_text)
+
     
     def setup_ui(self):
         """Setup the user interface."""
@@ -210,22 +214,10 @@ class SettingsView(QWidget):
         self.status_timer.start(2000)  # Update every 2 seconds
     
     def update_robot_status(self):
-        """Update robot status display."""
-        try:
-            status = self.controller.get_robot_status()
-            
-            status_text = f"Robot Initialized: {'Yes' if status['initialized'] else 'No'}\\n"
-            status_text += f"Lights: {'On' if status['lights_on'] else 'Off'}\\n"
-            
-            if status['run_info']:
-                status_text += f"\\nRun Info:\\n"
-                for key, value in status['run_info'].items():
-                    status_text += f"  {key}: {value}\\n"
-            
-            self.status_text.setPlainText(status_text)
-            
-        except Exception as e:
-            self.status_text.setPlainText(f"Error updating status: {str(e)}")
+        """Update robot status display - only captures StreamRedirector output."""
+        # This method exists to maintain the timer structure
+        # All actual status updates come through the StreamRedirector
+        pass
     
     def show_progress(self, message: str = "Processing..."):
         """Show progress bar with message."""

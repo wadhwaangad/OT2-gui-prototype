@@ -149,7 +149,6 @@ class SettingsModel:
             return False
     
     
-    
     def placeholder_function_1(self) -> bool:
         """Placeholder function 1."""
         try:

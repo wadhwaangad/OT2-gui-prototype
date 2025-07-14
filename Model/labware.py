@@ -16,8 +16,8 @@ class LabwareModel:
     def __init__(self, labware_file: str = "labware_config.json"):
         self.labware_file = labware_file
         self.labware_config = self.load_labware_config()
-        self.available_labware = self.get_available_labware()
         self.custom_labware = False
+        self.available_labware = self.get_available_labware()
         
     def load_labware_config(self) -> Dict[str, Any]:
         """Load labware configuration from JSON file."""
@@ -78,6 +78,7 @@ class LabwareModel:
         if self.custom_labware:
             return built_in + protocol_labware
         return built_in
+
     def get_slot_configuration(self, slot: str) -> Optional[str]:
         """Get configuration for a specific deck slot."""
         return self.labware_config["deck_layout"].get(slot)
@@ -175,6 +176,8 @@ class LabwareModel:
                 print(f"Error uploading {json_file_name}: {e}")
                 success = False
         self.custom_labware = True
+        # Update available labware list to include protocol JSONs
+        self.available_labware = self.get_available_labware()
         return success
     
     def remove_custom_labware(self, labware_type: str) -> bool:
