@@ -21,7 +21,7 @@ class ZoomableVideoWidget(QLabel):
         # Zoom and pan variables
         self.zoom_factor = 1.0
         self.min_zoom = 0.1
-        self.max_zoom = 5.0
+        self.max_zoom = 10.0
         self.zoom_step = 0.1
         
         # Pan variables
