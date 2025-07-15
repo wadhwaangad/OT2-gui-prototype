@@ -14,9 +14,11 @@
       "labware_type": "vwr_96_tiprack_200ul_xl",
       "slot": 10
     },
-    "slot_11": null,
+    "slot_11": {
+      "labware_name": "opentrons_96_tiprack_300ul",
+      "labware_type": "opentrons_96_tiprack_300ul",
+      "slot": 11
+    },
     "slot_12": null
-  },
-  "custom_labware": {},
-  "current_protocol": null
+  }
 }

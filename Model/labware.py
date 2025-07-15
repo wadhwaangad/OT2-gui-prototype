@@ -17,11 +17,14 @@ class LabwareModel:
     
     def __init__(self, labware_file: str = "labware_config.json"):
         self.labware_file = labware_file
-        self.labware_config = self.load_labware_config()
+        self.labware_config = self.load_labware_config()  # Always start with empty configuration
         self.custom_labware = False
         self.protocol_labware = []
         self.available_labware = self.get_available_labware()
         self.active_threads = []
+        
+        # Clear any saved configuration to ensure fresh start
+        self.save_labware_config()
 
     def run_in_thread(self, fn, *args, on_result=None, on_error=None, on_finished=None, **kwargs):
         """Run a function in a separate thread using Worker."""
@@ -199,8 +202,6 @@ class LabwareModel:
                     "data": custom_labware
                 }
                 command_payload = json.dumps(command_dict)
-                with open(f"{os.path.splitext(json_file_name)[0]}_payload.json", "w") as payload_file:
-                    json.dump(command_dict, payload_file, indent=2)
 
                 url = globals.robot_api.get_url('runs') + f'/{globals.robot_api.run_id}/' + 'labware_definitions'
                 r = requests.post(url=url, headers=globals.robot_api.HEADERS, params={"waitUntilComplete": True}, data=command_payload)
