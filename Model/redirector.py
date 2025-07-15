@@ -41,7 +41,11 @@ class StreamRedirector:
     def __init__(self, text_edit: QTextEdit):
         if StreamRedirector._active:
             # Prevent multiple global redirections
-            raise RuntimeError("StreamRedirector is already active. Only one instance allowed.")
+            print("Warning: StreamRedirector is already active. Skipping redirection setup.")
+            self.text_edit = text_edit
+            self.output_redirector = None
+            return
+            
         StreamRedirector._active = True
         self.text_edit = text_edit
         self.stdout_emitter = StreamEmitter()
@@ -71,10 +75,11 @@ class StreamRedirector:
             self.text_edit.ensureCursorVisible()
 
     def restore(self):
-        if StreamRedirector._active:
-            sys.stdout = self._original_stdout
-            sys.stderr = self._original_stderr
-            StreamRedirector._active = False
+        if hasattr(self, 'stdout_wrapper') and hasattr(self, 'stderr_wrapper'):
+            if StreamRedirector._active:
+                sys.stdout = self._original_stdout
+                sys.stderr = self._original_stderr
+                StreamRedirector._active = False
         self.text_edit = None
 
     def __enter__(self):

@@ -20,7 +20,13 @@ class SettingsView(QWidget):
         self.setup_ui()
         self.setup_status_timer()
         self.update_robot_status()
-        self.output_redirector = StreamRedirector(self.status_text)
+        
+        # Initialize output redirector with error handling
+        try:
+            self.output_redirector = StreamRedirector(self.status_text)
+        except RuntimeError as e:
+            print(f"StreamRedirector already active: {e}")
+            self.output_redirector = None
 
     
     def setup_ui(self):
@@ -239,36 +245,59 @@ class SettingsView(QWidget):
     # Event handlers
     def on_initialize_robot(self):
         """Handle initialize robot button click."""
+        # Disable button to prevent multiple clicks
+        self.init_robot_btn.setEnabled(False)
         self.show_progress("Initializing robot...")
-        success = self.controller.initialize_robot()
-        self.show_result(success, "Robot initialized" if success else "Failed to initialize robot")
+        
+        def on_result(success):
+            self.show_result(success, "Robot initialized" if success else "Failed to initialize robot")
+        
+        def on_error(error_msg):
+            self.show_result(False, f"Error initializing robot: {error_msg}")
+            print(f"Robot initialization error: {error_msg}")
+        
+        def on_finished():
+            self.hide_progress()
+            # Re-enable button when done
+            self.init_robot_btn.setEnabled(True)
+        
+        self.controller.initialize_robot(on_result=on_result, on_error=on_error, on_finished=on_finished)
     
     def on_home_robot(self):
         """Handle home robot button click."""
         self.show_progress("Homing robot...")
-        success = self.controller.home_robot()
-        self.show_result(success, "Robot homed" if success else "Failed to home robot")
+        def on_result(success):
+            self.show_result(success, "Robot homed" if success else "Failed to home robot")
+        def on_error(error_msg):
+            self.show_result(False, f"Error homing robot: {error_msg}")
+        self.controller.home_robot(on_result=on_result, on_error=on_error, on_finished=self.hide_progress)
     
     def on_toggle_lights(self):
         """Handle toggle lights button click."""
-        success = self.controller.toggle_lights()
-        self.show_result(success, "Lights toggled" if success else "Failed to toggle lights")
+        self.show_progress("Toggling lights...")
+        def on_result(success):
+            self.show_result(success, "Lights toggled" if success else "Failed to toggle lights")
+        def on_error(error_msg):
+            self.show_result(False, f"Error toggling lights: {error_msg}")
+        self.controller.toggle_lights(on_result=on_result, on_error=on_error, on_finished=self.hide_progress)
     
     def on_retract_axis(self):
         """Handle retract axis button click."""
         axis = self.retract_axis_combo.currentText()
         self.show_progress(f"Retracting {axis} axis...")
-        success = self.controller.retract_axis(axis)
-        self.show_result(success, f"{axis} axis retracted" if success else f"Failed to retract {axis} axis")
+        def on_result(success):
+            self.show_result(success, f"{axis} axis retracted" if success else f"Failed to retract {axis} axis")
+        self.controller.retract_axis(axis, on_result=on_result, on_finished=self.hide_progress)
     
     def on_get_run_info(self):
         """Handle get run info button click."""
         self.show_progress("Getting run info...")
-        run_info = self.controller.get_run_info()
-        if run_info:
-            self.show_result(True, "Run info retrieved")
-        else:
-            self.show_result(False, "Failed to get run info")
+        def on_result(run_info):
+            if run_info:
+                self.show_result(True, "Run info retrieved")
+            else:
+                self.show_result(False, "Failed to get run info")
+        self.controller.get_run_info(on_result=on_result, on_finished=self.hide_progress)
     
     def on_create_run(self):
         """Handle create run button click (run name removed)."""
@@ -277,15 +306,17 @@ class SettingsView(QWidget):
             "status": "created"
         }
         self.show_progress("Creating run...")
-        success = self.controller.create_run(run_config)
-        self.show_result(success, "Run created" if success else "Failed to create run")
+        def on_result(success):
+            self.show_result(success, "Run created" if success else "Failed to create run")
+        self.controller.create_run(run_config, on_result=on_result, on_finished=self.hide_progress)
     
     def on_load_pipette(self):
         """Handle load pipette button click (removed from UI, but method kept for compatibility)."""
         self.show_progress("Loading pipette...")
+        def on_result(success):
+            self.show_result(success, "Pipette loaded" if success else "Failed to load pipette")
         # No pipette type or mount selection
-        success = self.controller.load_pipette(None, None)
-        self.show_result(success, "Pipette loaded" if success else "Failed to load pipette")
+        self.controller.load_pipette(None, None, on_result=on_result, on_finished=self.hide_progress)
     
     def on_add_slot_offsets(self):
         """Handle add slot offsets button click."""
@@ -307,17 +338,20 @@ class SettingsView(QWidget):
     def on_placeholder_1(self):
         """Handle placeholder 1 button click."""
         self.show_progress("Executing placeholder function 1...")
-        success = self.controller.placeholder_function_1()
-        self.show_result(success, "Placeholder function 1 executed" if success else "Placeholder function 1 failed")
+        def on_result(success):
+            self.show_result(success, "Placeholder function 1 executed" if success else "Placeholder function 1 failed")
+        self.controller.placeholder_function_1(on_result=on_result, on_finished=self.hide_progress)
     
     def on_placeholder_2(self):
         """Handle placeholder 2 button click."""
         self.show_progress("Executing placeholder function 2...")
-        success = self.controller.placeholder_function_2()
-        self.show_result(success, "Placeholder function 2 executed" if success else "Placeholder function 2 failed")
+        def on_result(success):
+            self.show_result(success, "Placeholder function 2 executed" if success else "Placeholder function 2 failed")
+        self.controller.placeholder_function_2(on_result=on_result, on_finished=self.hide_progress)
     
     def on_placeholder_3(self):
         """Handle placeholder 3 button click."""
         self.show_progress("Executing placeholder function 3...")
-        success = self.controller.placeholder_function_3()
-        self.show_result(success, "Placeholder function 3 executed" if success else "Placeholder function 3 failed")
+        def on_result(success):
+            self.show_result(success, "Placeholder function 3 executed" if success else "Placeholder function 3 failed")
+        self.controller.placeholder_function_3(on_result=on_result, on_finished=self.hide_progress)

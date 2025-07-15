@@ -4,7 +4,6 @@ Manages communication between models and views.
 """
 
 from typing import Dict, Any, List, Optional
-from unittest import result
 from Model.camera import CameraManagerWindows, MultiprocessVideoCapture
 from Model.settings import SettingsModel
 from Model.labware import LabwareModel
@@ -263,9 +262,10 @@ class MainController:
     def drop_tip_in_place(self) -> bool:
         """Drop tip in place."""
         try:
-            self.manual_movement_model.run_in_thread(self.manual_movement_model.drop_tip_in_place())
-            print("Tip dropped in place")
-            return True
+            result = self.manual_movement_model.drop_tip_in_place()
+            if result:
+                print("Tip dropped in place")
+            return result
         except Exception as e:
             print(f"Error dropping tip: {e}")
             return False
@@ -273,9 +273,10 @@ class MainController:
     def stop(self) -> bool:
         """Stop robot movement."""
         try:
-            self.manual_movement_model.run_in_thread(self.manual_movement_model.stop)
-            print("Robot stopped")
-            return True
+            result = self.manual_movement_model.stop()
+            if result:
+                print("Robot stopped")
+            return result
         except Exception as e:
             print(f"Error stopping robot: {e}")
             return False

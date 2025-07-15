@@ -89,7 +89,11 @@ class LabwareModel:
     def set_slot_configuration(self, slot: int, labware: str) -> bool:
         """Set labware configuration for a specific deck slot."""
         try:
-           globals.robot_api.set_slot_configuration(slot, labware)
+            if not globals.robot_api:
+                print("Robot not initialized. Please initialize first.")
+                return False
+            globals.robot_api.set_slot_configuration(slot, labware)
+            return True
         except Exception as e:
             print(f"Error setting slot configuration: {e}")
             return False
@@ -124,7 +128,7 @@ class LabwareModel:
             return False
     
     def add_custom_labware(self) -> bool:
-        if not globals.robot_initialized:
+        if not globals.robot_api or not globals.robot_initialized:
             print("Robot not initialized. Please initialize first.")
             return False
         protocols_dir = os.path.join(paths.BASE_DIR, 'protocols')

@@ -19,6 +19,10 @@ class Worker(QObject):
             # Only emit result if not interacting with Qt objects
             self.result.emit(res)
         except Exception as e:
+            # Print exception details for debugging
+            import traceback
+            print(f"Worker exception: {e}")
+            traceback.print_exc()
             # Emit error as string
             self.error.emit(str(e))
         finally:

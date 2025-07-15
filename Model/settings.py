@@ -64,6 +64,9 @@ class SettingsModel:
     def add_slot_offsets(self, slots: list[int], x: float, y: float, z: float) -> bool:
         """Add slot offsets to the robot configuration."""
         try:
+            if not globals.robot_api:
+                print("Robot not initialized. Please initialize first.")
+                return False
             globals.robot_api.add_slot_offsets(slots,(x, y, z))
             return True
         except Exception as e:
@@ -73,10 +76,13 @@ class SettingsModel:
     def toggle_lights(self) -> bool:
         """Toggle the robot lights on/off."""
         try:
+            if not globals.robot_api:
+                print("Robot not initialized. Please initialize first.")
+                return False
             globals.robot_api.toggle_lights()
             self.lights_on = not self.lights_on
             print(f"Lights {'ON' if self.lights_on else 'OFF'}")
-
+            return True
         except Exception as e:
             print(f"Error toggling lights: {e}")
             return False
@@ -84,11 +90,11 @@ class SettingsModel:
     def home_robot(self) -> bool:
         """Home the robot to its reference position."""
         try:
-            globals.robot_api.home_robot()
-            print("Homing robot...")
             if not globals.robot_api:
                 print("Robot not initialized. Please initialize first.")
                 return False
+            globals.robot_api.home_robot()
+            print("Homing robot...")
             return True
         except Exception as e:
             print(f"Error homing robot: {e}")
@@ -97,6 +103,9 @@ class SettingsModel:
     def get_run_info(self) -> Dict[str, Any]:
         """Get current run information."""
         try:
+            if not globals.robot_api:
+                print("Robot not initialized. Please initialize first.")
+                return {}
             self.current_run_info = globals.robot_api.get_run_info()
             print("Getting run info...")
             return self.current_run_info
@@ -120,6 +129,9 @@ class SettingsModel:
     def create_run(self, run_config: Dict[str, Any]) -> bool:
         """Create a new run with the given configuration."""
         try:
+            if not globals.robot_api:
+                print("Robot not initialized. Please initialize first.")
+                return False
             globals.robot_api.create_run()
             print(f"Creating run with config: {run_config}")
             return True
@@ -130,6 +142,9 @@ class SettingsModel:
     def load_pipette(self) -> bool:
         """Load a pipette of the specified type and mount."""
         try:
+            if not globals.robot_api:
+                print("Robot not initialized. Please initialize first.")
+                return False
             globals.robot_api.load_pipette()
             return True
         except Exception as e:

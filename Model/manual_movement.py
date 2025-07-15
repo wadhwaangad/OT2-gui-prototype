@@ -39,12 +39,20 @@ class ManualMovementModel:
     
     def drop_tip_in_place(self):
         """Placeholder for move up action."""
+        if not globals.robot_api:
+            print("Robot not initialized. Please initialize first.")
+            return False
         globals.robot_api.drop_tip_in_place()
+        return True
         
 
     def stop(self):
         """Placeholder for stop action."""
+        if not globals.robot_api:
+            print("Robot not initialized. Please initialize first.")
+            return False
         globals.robot_api.control_run("stop")
+        return True
 
     def move_left(self):
         """Placeholder for move left action."""
