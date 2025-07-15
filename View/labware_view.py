@@ -97,6 +97,7 @@ class DeckSlotWidget(QFrame):
         self.slot_label = QLabel(f"Slot {self.slot_number}")
         self.slot_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.slot_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        self.slot_label.setStyleSheet("color: black;")
         layout.addWidget(self.slot_label)
         
         # Labware info label
@@ -104,6 +105,7 @@ class DeckSlotWidget(QFrame):
         self.labware_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.labware_label.setWordWrap(True)
         self.labware_label.setFont(QFont("Arial", 8))
+        self.labware_label.setStyleSheet("color: black;")
         layout.addWidget(self.labware_label)
         
         self.setLayout(layout)
@@ -201,6 +203,7 @@ class LabwareView(QWidget):
         # Add trash slot at top right (row 0, col 2)
         trash_widget = DeckSlotWidget("Trash")
         trash_widget.labware_label.setText("Trash")
+        trash_widget.labware_label.setStyleSheet("color: black;")
         trash_widget.setStyleSheet("""
             DeckSlotWidget {
                 background-color: #ffebee;
@@ -217,11 +220,11 @@ class LabwareView(QWidget):
         legend_layout.addWidget(QLabel("Legend:"))
         
         empty_label = QLabel("Empty")
-        empty_label.setStyleSheet("background-color: #f0f0f0; border: 1px solid #ccc; padding: 2px;")
+        empty_label.setStyleSheet("background-color: #f0f0f0; border: 1px solid #ccc; padding: 2px; color: black;")
         legend_layout.addWidget(empty_label)
         
         occupied_label = QLabel("Occupied")
-        occupied_label.setStyleSheet("background-color: #e6f3ff; border: 1px solid #0066cc; padding: 2px;")
+        occupied_label.setStyleSheet("background-color: #e6f3ff; border: 1px solid #0066cc; padding: 2px; color: black;")
         legend_layout.addWidget(occupied_label)
         
         legend_layout.addStretch()
@@ -338,28 +341,14 @@ class LabwareView(QWidget):
         if not hasattr(self, 'selected_slot'):
             QMessageBox.warning(self, "Warning", "Please select a slot first.")
             return
-
-        current_item = self.labware_list.currentItem()
-        if not current_item:
-            QMessageBox.warning(self, "Warning", "Please select a labware type.")
-            return
-
-        labware_type = current_item.data(Qt.ItemDataRole.UserRole)
-        custom_labware = self.controller.labware_model.labware_config.get("custom_labware", {})
-        if labware_type in custom_labware:
-            name = custom_labware[labware_type].get("name", labware_type)
-        else:
-            name = labware_type
-        success = self.controller.set_slot_labware(
-            f"slot_{self.selected_slot}",
-            labware_type,
-            name
-        )
+        slot_number = int(self.selected_slot)
+        labware_name = self.labware_list.currentItem().text()
+        success = self.controller.set_slot_labware(slot_number, labware_name)
         if success:
-            self.info_text.append(f"\n✓ Assigned {name} to slot {self.selected_slot}")
+            self.info_text.append(f"\n✓ Assigned {labware_name} to slot {slot_number}")
         else:
-            self.info_text.append(f"\n✗ Failed to assign labware to slot {self.selected_slot}")
-    
+            self.info_text.append(f"\n✗ Failed to assign labware to slot {slot_number}")
+
     def on_clear_slot(self):
         """Handle clear slot button click."""
         if not hasattr(self, 'selected_slot'):

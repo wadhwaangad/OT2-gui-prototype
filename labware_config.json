@@ -9,7 +9,11 @@
     "slot_7": null,
     "slot_8": null,
     "slot_9": null,
-    "slot_10": null,
+    "slot_10": {
+      "labware_name": "vwr_96_tiprack_200ul_xl",
+      "labware_type": "vwr_96_tiprack_200ul_xl",
+      "slot": 10
+    },
     "slot_11": null,
     "slot_12": null
   },

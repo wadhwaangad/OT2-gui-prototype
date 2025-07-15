@@ -19,8 +19,37 @@ class LabwareModel:
         self.labware_file = labware_file
         self.labware_config = self.load_labware_config()
         self.custom_labware = False
+        self.protocol_labware = []
         self.available_labware = self.get_available_labware()
-    
+        self.active_threads = []
+
+    def run_in_thread(self, fn, *args, on_result=None, on_error=None, on_finished=None, **kwargs):
+        """Run a function in a separate thread using Worker."""
+        thread = QThread()
+        worker = Worker(fn, *args, **kwargs)
+        worker.moveToThread(thread)
+
+        if on_result:
+            worker.result.connect(on_result)
+        if on_error:
+            worker.error.connect(on_error)
+        if on_finished:
+            worker.finished.connect(on_finished)
+
+        def cleanup():
+            if thread in self.active_threads:
+                self.active_threads.remove(thread)
+            thread.quit()
+            thread.wait()  # Wait for thread to finish
+            worker.deleteLater()
+            thread.deleteLater()
+
+        worker.finished.connect(cleanup)
+        thread.started.connect(worker.run)
+
+        self.active_threads.append(thread)
+        thread.start()
+        return thread
         
     def load_labware_config(self) -> Dict[str, Any]:
         """Load labware configuration from JSON file."""
@@ -61,7 +90,19 @@ class LabwareModel:
     
     def get_available_labware(self) -> List[str]:
         """Get list of available labware types as strings, including protocol JSONs."""
-        built_in = [
+        # Add protocol JSONs (without .json extension)
+        protocols_dir = os.path.join(paths.BASE_DIR, 'protocols')
+        self.protocol_labware = []  # Update instance variable
+        if os.path.isdir(protocols_dir):
+            for f in os.listdir(protocols_dir):
+                if f.endswith('.json'):
+                    self.protocol_labware.append(os.path.splitext(f)[0])
+        if self.custom_labware:
+            return self.get_built_in_labware() + self.protocol_labware
+        return self.get_built_in_labware()
+    
+    def get_built_in_labware(self) -> List[str]:
+        return [
             "corning_12_wellplate_6.9ml_flat",
             "corning_24_wellplate_3.4ml_flat",
             "corning_384_wellplate_112ul_flat",
@@ -71,16 +112,7 @@ class LabwareModel:
             "corning_96_wellplate_360ul_lid",
             "opentrons_96_tiprack_300ul"
         ]
-        # Add protocol JSONs (without .json extension)
-        protocols_dir = os.path.join(paths.BASE_DIR, 'protocols')
-        protocol_labware = []
-        if os.path.isdir(protocols_dir):
-            for f in os.listdir(protocols_dir):
-                if f.endswith('.json'):
-                    protocol_labware.append(os.path.splitext(f)[0])
-        if self.custom_labware:
-            return built_in + protocol_labware
-        return built_in
+
 
     def get_slot_configuration(self, slot: str) -> Optional[str]:
         """Get configuration for a specific deck slot."""
@@ -92,7 +124,25 @@ class LabwareModel:
             if not globals.robot_api:
                 print("Robot not initialized. Please initialize first.")
                 return False
-            globals.robot_api.set_slot_configuration(slot, labware)
+            
+            # Load labware on the robot
+            if labware in self.protocol_labware:
+                globals.robot_api.load_labware(labware, slot,  namespace='custom_beta', verbose=True)
+            else:
+                globals.robot_api.load_labware(labware, slot, namespace='opentrons', verbose=True)
+            
+            # Update local configuration
+            slot_key = f"slot_{slot}"
+            self.labware_config["deck_layout"][slot_key] = {
+                "labware_name": labware,
+                "labware_type": labware,
+                "slot": slot
+            }
+            
+            # Save configuration to file
+            self.save_labware_config()
+            
+            print(f"Successfully assigned {labware} to slot {slot}")
             return True
         except Exception as e:
             print(f"Error setting slot configuration: {e}")

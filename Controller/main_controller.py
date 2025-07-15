@@ -226,25 +226,47 @@ class MainController:
     def get_deck_layout(self) -> Dict[str, Any]:
         """Get current deck layout."""
         return self.labware_model.get_deck_layout()
-    
-    def set_slot_labware(self, slot: str, labware_type: str, labware_name: str = None) -> bool:
+
+    def set_slot_labware(self, slot: int, labware: str, on_result=None, on_error=None, on_finished=None) -> bool:
         """Set labware for a specific slot."""
-        success = self.labware_model.set_slot_configuration(slot, labware_type, labware_name)
-        if success and self.labware_view:
-            self.labware_view.update_deck_display()
-        return success
+        def on_success(result):
+            if result and self.labware_view:
+                self.labware_view.update_deck_display()
+            if on_result:
+                on_result(result)
+        
+        thread = self.labware_model.run_in_thread(
+            self.labware_model.set_slot_configuration, 
+            slot, 
+            labware, 
+            on_result=on_success, 
+            on_error=on_error, 
+            on_finished=on_finished
+        )
+        return thread is not None
     
     def clear_slot(self, slot: str) -> bool:
         """Clear labware from a specific slot."""
         success = self.labware_model.clear_slot(slot)
+        if success and self.labware_view:
+            self.labware_view.update_deck_display()
         return success
 
-    def add_custom_labware(self) -> bool:
+    def add_custom_labware(self, on_result=None, on_error=None, on_finished=None) -> bool:
         """Add custom labware definition."""
-        success = self.labware_model.add_custom_labware()
-        if success and self.labware_view:
-            self.labware_view.update_labware_list()
-        return success
+        def on_success(result):
+            if result and self.labware_view:
+                self.labware_view.update_labware_list()
+            if on_result:
+                on_result(result)
+        
+        thread = self.labware_model.run_in_thread(
+            self.labware_model.add_custom_labware, 
+            on_result=on_success, 
+            on_error=on_error, 
+            on_finished=on_finished
+        )
+        return thread is not None
     
     def get_slot_info(self, slot: str) -> Optional[Dict[str, Any]]:
         """Get information about a specific slot."""
@@ -259,10 +281,10 @@ class MainController:
         return self.labware_model.get_empty_slots()
     
     # Manual movement control methods
-    def drop_tip_in_place(self) -> bool:
+    def drop_tip_in_place(self, on_result=None, on_error=None, on_finished=None) -> bool:
         """Drop tip in place."""
         try:
-            result = self.manual_movement_model.drop_tip_in_place()
+            result = self.manual_movement_model.run_in_thread(self.manual_movement_model.drop_tip_in_place, on_result=on_result, on_error=on_error, on_finished=on_finished)
             if result:
                 print("Tip dropped in place")
             return result
@@ -270,10 +292,10 @@ class MainController:
             print(f"Error dropping tip: {e}")
             return False
     
-    def stop(self) -> bool:
+    def stop(self, on_result=None, on_error=None, on_finished=None) -> bool:
         """Stop robot movement."""
         try:
-            result = self.manual_movement_model.stop()
+            result = self.manual_movement_model.run_in_thread(self.manual_movement_model.stop, on_result=on_result, on_error=on_error, on_finished=on_finished)
             if result:
                 print("Robot stopped")
             return result
