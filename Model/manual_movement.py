@@ -54,18 +54,9 @@ class ManualMovementModel:
         globals.robot_api.control_run("stop")
         return True
 
-    def move_left(self):
-        """Placeholder for move left action."""
-        pass
-
-    def move_right(self):
-        """Placeholder for move right action."""
-        pass
-
-    def move_forward(self):
-        """Placeholder for move forward action."""
-        pass
-
-    def move_backward(self):
-        """Placeholder for move backward action."""
-        pass
+    def move_robot(self, x: float, y: float, z: float) -> bool:
+        if not globals.robot_initialized:
+            print("Robot not initialized. Please initialize first.")
+            return False
+        globals.robot_api.move_relative(x,y,z)
+        return True

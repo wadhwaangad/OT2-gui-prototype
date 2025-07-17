@@ -263,6 +263,30 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes:
             # Cleanup resources
             self.controller.cleanup()
+            
+            # Check if labware_config.json exists and ask user about saving/deleting
+            try:
+                import os
+                config_file = "labware_config.json"
+                if os.path.exists(config_file):
+                    save_reply = QMessageBox.question(
+                        self, "Save Configuration",
+                        "Do you want to save the current labware configuration?\n\n"
+                        "Choose 'Yes' to keep the configuration file for next time,\n"
+                        "or 'No' to delete it.",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    
+                    if save_reply == QMessageBox.StandardButton.No:
+                        os.remove(config_file)
+                        print(f"Deleted {config_file}")
+                    else:
+                        print(f"Kept {config_file}")
+                else:
+                    print(f"{config_file} not found")
+            except Exception as e:
+                print(f"Error handling labware_config.json: {e}")
+            
             event.accept()
         else:
             event.ignore()
@@ -287,6 +311,18 @@ def main():
     except Exception as e:
         print(f"Application error: {e}")
         traceback.print_exc()
+        
+        # Ensure labware config is saved in case of crash
+        try:
+            import os
+            config_file = "labware_config.json"
+            if os.path.exists(config_file):
+                print(f"Application crashed - keeping {config_file} for recovery")
+        except Exception as config_error:
+            print(f"Error checking config file during crash: {config_error}")
+        
+        # Re-raise the exception to ensure proper exit
+        raise
 
 
 if __name__ == "__main__":

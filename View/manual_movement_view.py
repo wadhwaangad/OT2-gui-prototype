@@ -1,4 +1,5 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, QLabel, QGroupBox
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, 
+                           QLabel, QGroupBox, QLineEdit, QFormLayout, QDoubleSpinBox)
 from PyQt6.QtCore import Qt
 
 class ManualMovementView(QWidget):
@@ -19,38 +20,56 @@ class ManualMovementView(QWidget):
         
         # Movement controls group
         movement_group = QGroupBox("Robot Movement")
-        movement_layout = QGridLayout()
+        movement_layout = QVBoxLayout()
         
-        # Create movement buttons in a cross pattern
-        self.up_btn = QPushButton("Drop Tip in Place")
-        self.up_btn.clicked.connect(self.on_drop_tip_in_place)
-        movement_layout.addWidget(self.up_btn, 0, 1)
+        # Control buttons row
+        button_row = QHBoxLayout()
         
-        self.left_btn = QPushButton("Left")
-        self.left_btn.clicked.connect(self.on_move_left)
-        movement_layout.addWidget(self.left_btn, 1, 0)
-        
-        self.right_btn = QPushButton("Right")
-        self.right_btn.clicked.connect(self.on_move_right)
-        movement_layout.addWidget(self.right_btn, 1, 2)
+        self.drop_tip_btn = QPushButton("Drop Tip in Place")
+        self.drop_tip_btn.clicked.connect(self.on_drop_tip_in_place)
+        self.drop_tip_btn.setMinimumSize(120, 40)
+        button_row.addWidget(self.drop_tip_btn)
 
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.clicked.connect(self.on_stop)
-        movement_layout.addWidget(self.stop_btn, 2, 1)
-
-        # Forward/Backward buttons
-        self.forward_btn = QPushButton("Forward")
-        self.forward_btn.clicked.connect(self.on_move_forward)
-        movement_layout.addWidget(self.forward_btn, 0, 3)
+        self.stop_btn.setMinimumSize(80, 40)
+        button_row.addWidget(self.stop_btn)
         
-        self.backward_btn = QPushButton("Backward")
-        self.backward_btn.clicked.connect(self.on_move_backward)
-        movement_layout.addWidget(self.backward_btn, 2, 3)
+        movement_layout.addLayout(button_row)
         
-        # Set button sizes
-        for button in [self.up_btn, self.stop_btn, self.left_btn, self.right_btn, 
-                      self.forward_btn, self.backward_btn]:
-            button.setMinimumSize(80, 40)
+        # Coordinate input section
+        coord_group = QGroupBox("Move Robot to Coordinates")
+        coord_layout = QFormLayout()
+        
+        # X coordinate input
+        self.x_input = QDoubleSpinBox()
+        self.x_input.setRange(-1000, 1000)
+        self.x_input.setDecimals(2)
+        self.x_input.setSuffix(" mm")
+        coord_layout.addRow("X Coordinate:", self.x_input)
+        
+        # Y coordinate input
+        self.y_input = QDoubleSpinBox()
+        self.y_input.setRange(-1000, 1000)
+        self.y_input.setDecimals(2)
+        self.y_input.setSuffix(" mm")
+        coord_layout.addRow("Y Coordinate:", self.y_input)
+        
+        # Z coordinate input
+        self.z_input = QDoubleSpinBox()
+        self.z_input.setRange(-1000, 1000)
+        self.z_input.setDecimals(2)
+        self.z_input.setSuffix(" mm")
+        coord_layout.addRow("Z Coordinate:", self.z_input)
+        
+        # Move robot button
+        self.move_robot_btn = QPushButton("Move Robot")
+        self.move_robot_btn.clicked.connect(self.on_move_robot)
+        self.move_robot_btn.setMinimumSize(100, 40)
+        coord_layout.addRow(self.move_robot_btn)
+        
+        coord_group.setLayout(coord_layout)
+        movement_layout.addWidget(coord_group)
         
         movement_group.setLayout(movement_layout)
         layout.addWidget(movement_group)
@@ -72,26 +91,13 @@ class ManualMovementView(QWidget):
         if not success:
             print("Failed to stop")
 
-    def on_move_left(self):
-        """Handle move left button action."""
-        success = self.controller.move_left()
+    def on_move_robot(self):
+        """Handle move robot to coordinates action."""
+        x = self.x_input.value()
+        y = self.y_input.value()
+        z = self.z_input.value()
+        
+        print(f"Moving robot to coordinates: X={x}, Y={y}, Z={z}")
+        success = self.controller.move_robot(x, y, z)
         if not success:
-            print("Failed to move left")
-    
-    def on_move_right(self):
-        """Handle move right button action."""
-        success = self.controller.move_right()
-        if not success:
-            print("Failed to move right")
-    
-    def on_move_forward(self):
-        """Handle move forward button action."""
-        success = self.controller.move_forward()
-        if not success:
-            print("Failed to move forward")
-    
-    def on_move_backward(self):
-        """Handle move backward button action."""
-        success = self.controller.move_backward()
-        if not success:
-            print("Failed to move backward")
+            print(f"Failed to move robot to coordinates X={x}, Y={y}, Z={z}")

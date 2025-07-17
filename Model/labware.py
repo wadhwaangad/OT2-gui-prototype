@@ -128,6 +128,10 @@ class LabwareModel:
                 print("Robot not initialized. Please initialize first.")
                 return False
             
+            # Extract labware type from labware name (word between second and third underscore)
+            parts = labware.split('_')
+            labware_type = parts[2] if len(parts) > 2 else labware
+            
             # Load labware on the robot
             if labware in self.protocol_labware:
                 globals.robot_api.load_labware(labware, slot,  namespace='custom_beta', verbose=True)
@@ -138,7 +142,7 @@ class LabwareModel:
             slot_key = f"slot_{slot}"
             self.labware_config["deck_layout"][slot_key] = {
                 "labware_name": labware,
-                "labware_type": labware,
+                "labware_type": labware_type,
                 "slot": slot
             }
             
@@ -231,3 +235,55 @@ class LabwareModel:
             if config is None:
                 empty.append(slot)
         return empty
+    
+    def get_tiprack_slots(self) -> List[Dict[str, Any]]:
+        """Get list of slots containing tiprack labware."""
+        tipracks = []
+        for slot, config in self.labware_config["deck_layout"].items():
+            if config and "tiprack" in config["labware_name"].lower():
+                tipracks.append({
+                    "slot": slot,
+                    "slot_number": slot.replace("slot_", ""),
+                    "labware_name": config["labware_name"],
+                    "labware_type": config["labware_type"]
+                })
+        return tipracks
+    
+    def pick_up_tip(self, slot: int, row: str, column: int) -> bool:
+        """Pick up a tip from specified tiprack location."""
+        try:
+            if not globals.robot_api or not globals.robot_initialized:
+                print("Robot not initialized. Please initialize first.")
+                return False
+            
+            # Validate slot has tiprack
+            slot_key = f"slot_{slot}"
+            slot_config = self.labware_config["deck_layout"].get(slot_key)
+            if not slot_config:
+                print(f"No labware found in slot {slot}")
+                return False
+            
+            if "tiprack" not in slot_config["labware_name"].lower():
+                print(f"Labware in slot {slot} is not a tiprack")
+                return False
+            
+            if not row.isalpha() or len(row) != 1:
+                print("Row must be a single letter (e.g., A, B, C)")
+                return False
+            
+            if not isinstance(column, int) or column < 1:
+                print("Column must be a positive integer")
+                return False
+            
+            # Construct well name (e.g., A1, B12)
+            well_name = f"{row.upper()}{column}"
+            
+            # Pick up the tip using the robot API
+            globals.robot_api.pick_up_tip(globals.robot_api.labware_dct(f"{slot}"), well_name)
+            
+            print(f"Successfully picked up tip from {well_name} in slot {slot}")
+            return True
+            
+        except Exception as e:
+            print(f"Error picking up tip: {e}")
+            return False

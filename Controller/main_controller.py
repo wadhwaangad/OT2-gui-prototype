@@ -267,6 +267,18 @@ class MainController:
             on_finished=on_finished
         )
         return thread is not None
+    def pickup_tip(self, slot: int, row: str, column: int, on_result=None, on_error=None, on_finished=None) -> bool:
+        """Pickup a tip from a specific slot."""  
+        thread = self.labware_model.run_in_thread(
+            self.labware_model.pickup_tip, 
+            slot, 
+            row, 
+            column, 
+            on_result=on_success, 
+            on_error=on_error, 
+            on_finished=on_finished
+        )
+        return thread is not None
     
     def get_slot_info(self, slot: str) -> Optional[Dict[str, Any]]:
         """Get information about a specific slot."""
@@ -279,6 +291,11 @@ class MainController:
     def get_empty_slots(self) -> List[str]:
         """Get list of empty slots."""
         return self.labware_model.get_empty_slots()
+    
+    def get_tiprack_slots(self) -> list:
+        """Get list of slots containing tiprack labware."""
+        return self.labware_model.get_tiprack_slots()
+
     
     # Manual movement control methods
     def drop_tip_in_place(self, on_result=None, on_error=None, on_finished=None) -> bool:
@@ -303,45 +320,21 @@ class MainController:
             print(f"Error stopping robot: {e}")
             return False
     
-    def move_left(self) -> bool:
-        """Move robot left."""
+    def move_robot(self, x: float, y: float, z: float, on_result=None, on_error=None, on_finished=None) -> bool:
         try:
-            self.manual_movement_model.move_left()
-            print("Robot moved left")
-            return True
-        except Exception as e:
-            print(f"Error moving left: {e}")
-            return False
+            result = self.manual_movement_model.run_in_thread(
+                self.manual_movement_model.move_robot, 
+                x, 
+                y, 
+                z, 
+                on_result=on_result, 
+                on_error=on_error, 
+                on_finished=on_finished
+            )
+            if result:
+                print(f"Robot moved to coordinates: X={x}, Y={y}, Z={z}")
+            return result
     
-    def move_right(self) -> bool:
-        """Move robot right."""
-        try:
-            self.manual_movement_model.move_right()
-            print("Robot moved right")
-            return True
-        except Exception as e:
-            print(f"Error moving right: {e}")
-            return False
-    
-    def move_forward(self) -> bool:
-        """Move robot forward."""
-        try:
-            self.manual_movement_model.move_forward()
-            print("Robot moved forward")
-            return True
-        except Exception as e:
-            print(f"Error moving forward: {e}")
-            return False
-    
-    def move_backward(self) -> bool:
-        """Move robot backward."""
-        try:
-            self.manual_movement_model.move_backward()
-            print("Robot moved backward")
-            return True
-        except Exception as e:
-            print(f"Error moving backward: {e}")
-            return False
     
     # Cleanup methods
     def cleanup(self):

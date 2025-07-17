@@ -278,6 +278,50 @@ class LabwareView(QWidget):
         layout.addWidget(slot_group)
         
        
+        # Tip pickup section
+        tip_group = QGroupBox("Tip Pickup")
+        tip_layout = QVBoxLayout()
+        
+        # Tiprack slot selector
+        tiprack_layout = QHBoxLayout()
+        tiprack_layout.addWidget(QLabel("Tiprack Slot:"))
+        self.tiprack_combo = QComboBox()
+        self.tiprack_combo.currentTextChanged.connect(self.on_tiprack_selection_changed)
+        tiprack_layout.addWidget(self.tiprack_combo)
+        tip_layout.addLayout(tiprack_layout)
+        
+        # Row and column inputs
+        position_layout = QHBoxLayout()
+        
+        # Row input (letter)
+        position_layout.addWidget(QLabel("Row:"))
+        self.row_edit = QLineEdit()
+        self.row_edit.setMaxLength(1)
+        self.row_edit.setPlaceholderText("A")
+        self.row_edit.setMaximumWidth(50)
+        position_layout.addWidget(self.row_edit)
+        
+        # Column input (number)
+        position_layout.addWidget(QLabel("Column:"))
+        self.column_spinbox = QSpinBox()
+        self.column_spinbox.setMinimum(1)
+        self.column_spinbox.setMaximum(100)
+        self.column_spinbox.setValue(1)
+        self.column_spinbox.setMaximumWidth(70)
+        position_layout.addWidget(self.column_spinbox)
+        
+        position_layout.addStretch()
+        tip_layout.addLayout(position_layout)
+        
+        # Pick up tip button
+        self.pickup_tip_btn = QPushButton("Pick Up Tip")
+        self.pickup_tip_btn.clicked.connect(self.on_pickup_tip)
+        self.pickup_tip_btn.setEnabled(False)
+        tip_layout.addWidget(self.pickup_tip_btn)
+        
+        tip_group.setLayout(tip_layout)
+        layout.addWidget(tip_group)
+        
         # Information panel
         info_group = QGroupBox("Information")
         info_layout = QVBoxLayout()
@@ -312,29 +356,33 @@ class LabwareView(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, labware_type)
             self.labware_list.addItem(item)
         
+        # Update tiprack combobox
+        self.update_tiprack_list()
+    
+    def update_tiprack_list(self):
+        """Update the tiprack slots combobox."""
+        self.tiprack_combo.clear()
+        tipracks = self.controller.get_tiprack_slots()
+        
+        if not tipracks:
+            self.tiprack_combo.addItem("No tipracks loaded")
+            self.pickup_tip_btn.setEnabled(False)
+        else:
+            for tiprack in tipracks:
+                display_text = f"Slot {tiprack['slot_number']} - {tiprack['labware_name']}"
+                self.tiprack_combo.addItem(display_text, tiprack['slot_number'])
+            self.pickup_tip_btn.setEnabled(True)
     
     def on_slot_clicked(self, slot_number):
         """Handle slot click events."""
         self.selected_slot_label.setText(f"Selected: Slot {slot_number}")
         self.assign_labware_btn.setEnabled(True)
         self.clear_slot_btn.setEnabled(True)
-        self.selected_slot = slot_number
 
-        # Show slot information
-        slot_info = self.controller.get_slot_info(f"slot_{slot_number}")
-        custom_labware = self.controller.labware_model.labware_config.get("custom_labware", {})
-        if slot_info:
-            info_text = f"Slot {slot_number}:\n"
-            info_text += f"Labware: {slot_info['labware_name']}\n"
-            info_text += f"Type: {slot_info['labware_type']}\n"
-            # Only show description if custom
-            if slot_info['labware_type'] in custom_labware:
-                desc = custom_labware[slot_info['labware_type']].get('description', '')
-                if desc:
-                    info_text += f"Description: {desc}\n"
-        else:
-            info_text = f"Slot {slot_number}: Empty"
-        self.info_text.setPlainText(info_text)
+    def on_tiprack_selection_changed(self, text):
+        """Set selected_slot to the slot number of the selected tiprack."""
+        slot_number = self.tiprack_combo.currentData()
+        self.selected_slot = slot_number
     
     def on_assign_labware(self):
         """Handle assign labware button click."""
@@ -368,7 +416,28 @@ class LabwareView(QWidget):
             else:
                 self.info_text.append(f"\\n✗ Failed to clear slot {self.selected_slot}")
     
-    
-    
     def on_add_custom_labware(self):
         self.controller.add_custom_labware()
+    
+    def on_pickup_tip(self):
+        """Handle pick up tip button click."""
+        if not hasattr(self, 'selected_slot'):
+            QMessageBox.warning(self, "Warning", "Please select a tiprack slot first.")
+            return
+        
+        row = self.row_edit.text().strip().upper()
+        column = self.column_spinbox.value()
+        
+        if not row or len(row) != 1 or not row.isalpha():
+            QMessageBox.warning(self, "Warning", "Row must be a single letter (A-H).")
+            return
+        
+        if column < 1 or column > 12:
+            QMessageBox.warning(self, "Warning", "Column must be between 1 and 12.")
+            return
+        
+        success = self.controller.pickup_tip(self.selected_slot, row, column)
+        if success:
+            self.info_text.append(f"\n✓ Picked up tip from {self.selected_slot} at {row}{column}")
+        else:
+            self.info_text.append(f"\n✗ Failed to pick up tip from {self.selected_slot} at {row}{column}")
