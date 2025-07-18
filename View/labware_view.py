@@ -375,6 +375,7 @@ class LabwareView(QWidget):
     
     def on_slot_clicked(self, slot_number):
         """Handle slot click events."""
+        self.selected_slot = slot_number
         self.selected_slot_label.setText(f"Selected: Slot {slot_number}")
         self.assign_labware_btn.setEnabled(True)
         self.clear_slot_btn.setEnabled(True)
@@ -389,13 +390,41 @@ class LabwareView(QWidget):
         if not hasattr(self, 'selected_slot'):
             QMessageBox.warning(self, "Warning", "Please select a slot first.")
             return
+        
+        if not self.labware_list.currentItem():
+            QMessageBox.warning(self, "Warning", "Please select a labware type first.")
+            return
+            
         slot_number = int(self.selected_slot)
         labware_name = self.labware_list.currentItem().text()
-        success = self.controller.set_slot_labware(slot_number, labware_name)
-        if success:
-            self.info_text.append(f"\n✓ Assigned {labware_name} to slot {slot_number}")
-        else:
-            self.info_text.append(f"\n✗ Failed to assign labware to slot {slot_number}")
+        
+        def on_success(result):
+            if result:
+                self.info_text.append(f"\n✓ Assigned {labware_name} to slot {slot_number}")
+                self.update_deck_display()
+                self.update_tiprack_list()
+            else:
+                self.info_text.append(f"\n✗ Failed to assign labware to slot {slot_number}")
+            self.assign_labware_btn.setEnabled(True)
+        
+        def on_error(error):
+            self.info_text.append(f"\n✗ Error assigning labware: {error}")
+            self.assign_labware_btn.setEnabled(True)
+        
+        def on_finished():
+            self.assign_labware_btn.setEnabled(True)
+        
+        # Disable button during operation
+        self.assign_labware_btn.setEnabled(False)
+        self.info_text.append(f"\nAssigning {labware_name} to slot {slot_number}...")
+        
+        self.controller.set_slot_labware(
+            slot_number, 
+            labware_name,
+            on_result=on_success,
+            on_error=on_error,
+            on_finished=on_finished
+        )
 
     def on_clear_slot(self):
         """Handle clear slot button click."""
@@ -417,7 +446,31 @@ class LabwareView(QWidget):
                 self.info_text.append(f"\\n✗ Failed to clear slot {self.selected_slot}")
     
     def on_add_custom_labware(self):
-        self.controller.add_custom_labware()
+        """Handle add custom labware button click."""
+        def on_success(result):
+            """Called when custom labware is successfully added."""
+            self.info_text.append("\n✓ Custom labware added successfully")
+            self.update_labware_list()  # Refresh the labware list
+            
+        def on_error(error):
+            """Called when there's an error adding custom labware."""
+            self.info_text.append(f"\n✗ Failed to add custom labware: {error}")
+            
+        def on_finished():
+            """Called when the operation finishes (success or failure)."""
+            # Re-enable the button
+            self.add_custom_btn.setEnabled(True)
+        
+        # Disable button during operation
+        self.add_custom_btn.setEnabled(False)
+        self.info_text.append("\nAdding custom labware...")
+        
+        # Call controller with callbacks
+        self.controller.add_custom_labware(
+            on_result=on_success,
+            on_error=on_error, 
+            on_finished=on_finished
+        )
     
     def on_pickup_tip(self):
         """Handle pick up tip button click."""
@@ -436,8 +489,29 @@ class LabwareView(QWidget):
             QMessageBox.warning(self, "Warning", "Column must be between 1 and 12.")
             return
         
-        success = self.controller.pickup_tip(self.selected_slot, row, column)
-        if success:
-            self.info_text.append(f"\n✓ Picked up tip from {self.selected_slot} at {row}{column}")
-        else:
-            self.info_text.append(f"\n✗ Failed to pick up tip from {self.selected_slot} at {row}{column}")
+        def on_success(result):
+            if result:
+                self.info_text.append(f"\n✓ Picked up tip from slot {self.selected_slot} at {row}{column}")
+            else:
+                self.info_text.append(f"\n✗ Failed to pick up tip from slot {self.selected_slot} at {row}{column}")
+            self.pickup_tip_btn.setEnabled(True)
+        
+        def on_error(error):
+            self.info_text.append(f"\n✗ Error picking up tip: {error}")
+            self.pickup_tip_btn.setEnabled(True)
+        
+        def on_finished():
+            self.pickup_tip_btn.setEnabled(True)
+        
+        # Disable button during operation
+        self.pickup_tip_btn.setEnabled(False)
+        self.info_text.append(f"\nPicking up tip from slot {self.selected_slot} at {row}{column}...")
+        
+        self.controller.pickup_tip(
+            int(self.selected_slot), 
+            row, 
+            column,
+            on_result=on_success,
+            on_error=on_error,
+            on_finished=on_finished
+        )

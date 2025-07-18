@@ -72,7 +72,7 @@ class LabwareModel:
         except IOError as e:
             print(f"Error saving labware config: {e}")
     
-    def get_default_labware_config(self) -> list[str]:
+    def get_default_labware_config(self) -> Dict[str, Any]:
         """Get default labware configuration."""
         return {
             "deck_layout": {
@@ -128,22 +128,38 @@ class LabwareModel:
                 print("Robot not initialized. Please initialize first.")
                 return False
             
+            if not globals.robot_initialized:
+                print("Robot not properly initialized. Please initialize first.")
+                return False
+            
+            # Validate slot number
+            if slot not in range(1, 12):
+                print(f"Invalid slot number: {slot}. Must be between 1 and 11.")
+                return False
+            
             # Extract labware type from labware name (word between second and third underscore)
             parts = labware.split('_')
-            labware_type = parts[2] if len(parts) > 2 else labware
+            if len(parts) > 2:
+                labware_type = parts[2]
+            else:
+                # Fallback to the full labware name if format doesn't match expected pattern
+                labware_type = labware
             
             # Load labware on the robot
-            if labware in self.protocol_labware:
-                globals.robot_api.load_labware(labware, slot,  namespace='custom_beta', verbose=True)
-            else:
-                globals.robot_api.load_labware(labware, slot, namespace='opentrons', verbose=True)
+            try:
+                if labware in self.protocol_labware:
+                    globals.robot_api.load_labware(labware, slot,  namespace='custom_beta', verbose=True)
+                else:
+                    globals.robot_api.load_labware(labware, slot, namespace='opentrons', verbose=True)
+            except Exception as e:
+                print(f"error: {e}")
+                return False
             
             # Update local configuration
             slot_key = f"slot_{slot}"
             self.labware_config["deck_layout"][slot_key] = {
                 "labware_name": labware,
                 "labware_type": labware_type,
-                "slot": slot
             }
             
             # Save configuration to file
@@ -185,39 +201,60 @@ class LabwareModel:
             return False
     
     def add_custom_labware(self) -> bool:
-        if not globals.robot_api or not globals.robot_initialized:
-            print("Robot not initialized. Please initialize first.")
-            return False
         protocols_dir = os.path.join(paths.BASE_DIR, 'protocols')
+        
+        # Check if protocols directory exists and has JSON files
+        if not os.path.isdir(protocols_dir):
+            print("Protocols directory not found.")
+            return False
+            
         json_files = [f for f in os.listdir(protocols_dir) if f.endswith('.json')]
-
         if not json_files:
             print("No custom labware JSON files found.")
             return False
 
         success = True
-        for json_file_name in json_files:
-            custom_labware_path = os.path.join(protocols_dir, json_file_name)
-            try:
-                with open(custom_labware_path, 'r', encoding='utf-8') as json_file:
-                    custom_labware = json.load(json_file)
+        
+        # If we have run info available, skip the upload process (already uploaded)
+        if globals.get_run_info:
+            print("Using existing run info, skipping labware upload.")
+        else:
+            # Upload custom labware to robot
+            if not globals.robot_api or not globals.robot_initialized:
+                print("Robot not initialized. Please initialize first.")
+                return False
+                
+            for json_file_name in json_files:
+                custom_labware_path = os.path.join(protocols_dir, json_file_name)
+                try:
+                    with open(custom_labware_path, 'r', encoding='utf-8') as json_file:
+                        custom_labware = json.load(json_file)
 
-                command_dict = {
-                    "data": custom_labware
-                }
-                command_payload = json.dumps(command_dict)
+                    command_dict = {
+                        "data": custom_labware
+                    }
+                    command_payload = json.dumps(command_dict)
 
-                url = globals.robot_api.get_url('runs') + f'/{globals.robot_api.run_id}/' + 'labware_definitions'
-                r = requests.post(url=url, headers=globals.robot_api.HEADERS, params={"waitUntilComplete": True}, data=command_payload)
-                if not r.ok:
-                    print(f"Failed to upload {json_file_name}: {r.text}")
+                    url = globals.robot_api.get_url('runs') + f'/{globals.robot_api.run_id}/' + 'labware_definitions'
+                    r = requests.post(url=url, headers=globals.robot_api.HEADERS, params={"waitUntilComplete": True}, data=command_payload)
+                    if not r.ok:
+                        print(f"Failed to upload {json_file_name}: {r.text}")
+                        success = False
+                    else:
+                        print(f"Successfully uploaded {json_file_name}")
+                except Exception as e:
+                    print(f"Error uploading {json_file_name}: {e}")
                     success = False
-            except Exception as e:
-                print(f"Error uploading {json_file_name}: {e}")
-                success = False
-        self.custom_labware = True
-        # Update available labware list to include protocol JSONs
-        self.available_labware = self.get_available_labware()
+        
+        # Only set custom_labware to True and update the list if we were successful
+        if success:
+            self.custom_labware = True
+            # Update available labware list to include protocol JSONs
+            self.available_labware = self.get_available_labware()
+            print("Custom labware list updated successfully.")
+        else:
+            print("Failed to add custom labware due to upload errors.")
+            
         return success
     
     def get_occupied_slots(self) -> List[str]:
@@ -263,10 +300,6 @@ class LabwareModel:
                 print(f"No labware found in slot {slot}")
                 return False
             
-            if "tiprack" not in slot_config["labware_name"].lower():
-                print(f"Labware in slot {slot} is not a tiprack")
-                return False
-            
             if not row.isalpha() or len(row) != 1:
                 print("Row must be a single letter (e.g., A, B, C)")
                 return False
@@ -277,10 +310,10 @@ class LabwareModel:
             
             # Construct well name (e.g., A1, B12)
             well_name = f"{row.upper()}{column}"
-            
+            labware_id = globals.robot_api.labware_dct[f'{slot}']
             # Pick up the tip using the robot API
-            globals.robot_api.pick_up_tip(globals.robot_api.labware_dct(f"{slot}"), well_name)
-            
+            globals.robot_api.pick_up_tip(labware_id, well_name)
+
             print(f"Successfully picked up tip from {well_name} in slot {slot}")
             return True
             

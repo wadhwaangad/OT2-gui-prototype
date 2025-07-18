@@ -58,5 +58,5 @@ class ManualMovementModel:
         if not globals.robot_initialized:
             print("Robot not initialized. Please initialize first.")
             return False
-        globals.robot_api.move_relative(x,y,z)
+        globals.robot_api.move_to_coordinates((x,y,z))
         return True

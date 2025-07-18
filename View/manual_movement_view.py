@@ -45,21 +45,18 @@ class ManualMovementView(QWidget):
         self.x_input = QDoubleSpinBox()
         self.x_input.setRange(-1000, 1000)
         self.x_input.setDecimals(2)
-        self.x_input.setSuffix(" mm")
         coord_layout.addRow("X Coordinate:", self.x_input)
         
         # Y coordinate input
         self.y_input = QDoubleSpinBox()
         self.y_input.setRange(-1000, 1000)
         self.y_input.setDecimals(2)
-        self.y_input.setSuffix(" mm")
         coord_layout.addRow("Y Coordinate:", self.y_input)
         
         # Z coordinate input
         self.z_input = QDoubleSpinBox()
         self.z_input.setRange(-1000, 1000)
         self.z_input.setDecimals(2)
-        self.z_input.setSuffix(" mm")
         coord_layout.addRow("Z Coordinate:", self.z_input)
         
         # Move robot button

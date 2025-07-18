@@ -316,7 +316,7 @@ class SettingsView(QWidget):
         def on_result(success):
             self.show_result(success, "Pipette loaded" if success else "Failed to load pipette")
         # No pipette type or mount selection
-        self.controller.load_pipette(None, None, on_result=on_result, on_finished=self.hide_progress)
+        self.controller.load_pipette(on_result=on_result, on_finished=self.hide_progress)
     
     def on_add_slot_offsets(self):
         """Handle add slot offsets button click."""

@@ -1,2 +1,3 @@
 robot_api=None
 robot_initialized=False
+get_run_info=False

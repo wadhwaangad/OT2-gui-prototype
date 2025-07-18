@@ -189,9 +189,9 @@ class MainController:
         """Create a new run in a thread."""
         return self.settings_model.run_in_thread(self.settings_model.create_run, run_config, on_result=on_result, on_error=on_error, on_finished=on_finished)
 
-    def load_pipette(self, pipette_type: str, mount: str, on_result=None, on_error=None, on_finished=None):
+    def load_pipette(self, on_result=None, on_error=None, on_finished=None):
         """Load a pipette in a thread."""
-        return self.settings_model.run_in_thread(self.settings_model.load_pipette, pipette_type, mount, on_result=on_result, on_error=on_error, on_finished=on_finished)
+        return self.settings_model.run_in_thread(self.settings_model.load_pipette, on_result=on_result, on_error=on_error, on_finished=on_finished)
 
     def placeholder_function_1(self, on_result=None, on_error=None, on_finished=None):
         """Placeholder function 1 in a thread."""
@@ -254,15 +254,9 @@ class MainController:
 
     def add_custom_labware(self, on_result=None, on_error=None, on_finished=None) -> bool:
         """Add custom labware definition."""
-        def on_success(result):
-            if result and self.labware_view:
-                self.labware_view.update_labware_list()
-            if on_result:
-                on_result(result)
-        
         thread = self.labware_model.run_in_thread(
             self.labware_model.add_custom_labware, 
-            on_result=on_success, 
+            on_result=on_result, 
             on_error=on_error, 
             on_finished=on_finished
         )
@@ -270,11 +264,11 @@ class MainController:
     def pickup_tip(self, slot: int, row: str, column: int, on_result=None, on_error=None, on_finished=None) -> bool:
         """Pickup a tip from a specific slot."""  
         thread = self.labware_model.run_in_thread(
-            self.labware_model.pickup_tip, 
+            self.labware_model.pick_up_tip, 
             slot, 
             row, 
             column, 
-            on_result=on_success, 
+            on_result=on_result, 
             on_error=on_error, 
             on_finished=on_finished
         )
@@ -334,8 +328,10 @@ class MainController:
             if result:
                 print(f"Robot moved to coordinates: X={x}, Y={y}, Z={z}")
             return result
-    
-    
+        except Exception as e:
+            print(f"Error moving robot: {e}")
+            return False
+
     # Cleanup methods
     def cleanup(self):
         """Cleanup resources when closing application."""

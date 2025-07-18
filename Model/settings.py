@@ -107,6 +107,7 @@ class SettingsModel:
                 print("Robot not initialized. Please initialize first.")
                 return {}
             self.current_run_info = globals.robot_api.get_run_info()
+            globals.get_run_info = True
             print("Getting run info...")
             return self.current_run_info
         except Exception as e:
