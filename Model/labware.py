@@ -17,9 +17,11 @@ class LabwareModel:
     
     def __init__(self, labware_file: str = "labware_config.json"):
         self.labware_file = labware_file
-        self.labware_config = self.load_labware_config()  # Always start with empty configuration
-        self.custom_labware = False
-        self.protocol_labware = []
+        self.labware_config = self.load_labware_config()  
+        # Initialize global deck layout if not already set or if empty
+        if not isinstance(globals.deck_layout, dict) or not globals.deck_layout:
+            globals.deck_layout = self.labware_config["deck_layout"].copy()
+        
         self.available_labware = self.get_available_labware()
         self.active_threads = []
         
@@ -94,14 +96,8 @@ class LabwareModel:
     def get_available_labware(self) -> List[str]:
         """Get list of available labware types as strings, including protocol JSONs."""
         # Add protocol JSONs (without .json extension)
-        protocols_dir = os.path.join(paths.BASE_DIR, 'protocols')
-        self.protocol_labware = []  # Update instance variable
-        if os.path.isdir(protocols_dir):
-            for f in os.listdir(protocols_dir):
-                if f.endswith('.json'):
-                    self.protocol_labware.append(os.path.splitext(f)[0])
-        if self.custom_labware:
-            return self.get_built_in_labware() + self.protocol_labware
+        if globals.get_run_info or globals.custom_labware:
+            return self.get_built_in_labware() + globals.protcol_labware
         return self.get_built_in_labware()
     
     def get_built_in_labware(self) -> List[str]:
@@ -119,7 +115,8 @@ class LabwareModel:
 
     def get_slot_configuration(self, slot: str) -> Optional[str]:
         """Get configuration for a specific deck slot."""
-        return self.labware_config["deck_layout"].get(slot)
+        deck_layout = globals.deck_layout if isinstance(globals.deck_layout, dict) else self.labware_config["deck_layout"]
+        return deck_layout.get(slot)
     
     def set_slot_configuration(self, slot: int, labware: str) -> bool:
         """Set labware configuration for a specific deck slot."""
@@ -147,7 +144,7 @@ class LabwareModel:
             
             # Load labware on the robot
             try:
-                if labware in self.protocol_labware:
+                if labware in globals.protocol_labware:
                     globals.robot_api.load_labware(labware, slot,  namespace='custom_beta', verbose=True)
                 else:
                     globals.robot_api.load_labware(labware, slot, namespace='opentrons', verbose=True)
@@ -155,12 +152,18 @@ class LabwareModel:
                 print(f"error: {e}")
                 return False
             
-            # Update local configuration
+            # Update both global and local configuration
             slot_key = f"slot_{slot}"
-            self.labware_config["deck_layout"][slot_key] = {
+            slot_config = {
                 "labware_name": labware,
                 "labware_type": labware_type,
             }
+            
+            # Update global deck layout
+            globals.deck_layout[slot_key] = slot_config
+            
+            # Update local configuration  
+            self.labware_config["deck_layout"][slot_key] = slot_config
             
             # Save configuration to file
             self.save_labware_config()
@@ -171,13 +174,15 @@ class LabwareModel:
             print(f"Error setting slot configuration: {e}")
             return False
     
-    def clear_slot(self, slot: str) -> bool:
+    def clear_slot(self, slot: int) -> bool:
         """Clear labware from a specific deck slot."""
         try:
             if slot not in self.labware_config["deck_layout"]:
                 print(f"Invalid slot: {slot}")
                 return False
-            
+            globals.robot_api.move_labware(globals.robot_api.labware_dct[slot], "offDeck")
+            # Clear from both global and local configuration
+            globals.deck_layout[slot] = None
             self.labware_config["deck_layout"][slot] = None
             self.save_labware_config()
             return True
@@ -187,11 +192,27 @@ class LabwareModel:
     
     def get_deck_layout(self) -> Dict[str, Any]:
         """Get the current deck layout configuration."""
-        return self.labware_config["deck_layout"]
+        # Use global deck layout if it exists as a dictionary, otherwise fall back to file config
+        return globals.deck_layout if isinstance(globals.deck_layout, dict) else self.labware_config["deck_layout"]
     
     def clear_deck(self) -> bool:
         """Clear all labware from the deck."""
         try:
+            # Clear both global and file-based deck layout
+            globals.deck_layout = {
+                "slot_1": None,
+                "slot_2": None,
+                "slot_3": None,
+                "slot_4": None,
+                "slot_5": None,
+                "slot_6": None,
+                "slot_7": None,
+                "slot_8": None,
+                "slot_9": None,
+                "slot_10": None,
+                "slot_11": None,
+                "slot_12": None
+            }
             for slot in self.labware_config["deck_layout"]:
                 self.labware_config["deck_layout"][slot] = None
             self.save_labware_config()
@@ -248,7 +269,13 @@ class LabwareModel:
         
         # Only set custom_labware to True and update the list if we were successful
         if success:
-            self.custom_labware = True
+            globals.custom_labware = True
+            protocols_dir = os.path.join(paths.BASE_DIR, 'protocols')
+            if os.path.isdir(protocols_dir):
+                globals.protocol_labware = []
+                for f in os.listdir(protocols_dir):
+                    if f.endswith('.json'):
+                        globals.protocol_labware.append(os.path.splitext(f)[0])
             # Update available labware list to include protocol JSONs
             self.available_labware = self.get_available_labware()
             print("Custom labware list updated successfully.")
@@ -260,7 +287,8 @@ class LabwareModel:
     def get_occupied_slots(self) -> List[str]:
         """Get list of slots that have labware assigned."""
         occupied = []
-        for slot, config in self.labware_config["deck_layout"].items():
+        deck_layout = globals.deck_layout if isinstance(globals.deck_layout, dict) else self.labware_config["deck_layout"]
+        for slot, config in deck_layout.items():
             if config is not None:
                 occupied.append(slot)
         return occupied
@@ -268,7 +296,8 @@ class LabwareModel:
     def get_empty_slots(self) -> List[str]:
         """Get list of empty slots on the deck."""
         empty = []
-        for slot, config in self.labware_config["deck_layout"].items():
+        deck_layout = globals.deck_layout if isinstance(globals.deck_layout, dict) else self.labware_config["deck_layout"]
+        for slot, config in deck_layout.items():
             if config is None:
                 empty.append(slot)
         return empty
@@ -276,7 +305,8 @@ class LabwareModel:
     def get_tiprack_slots(self) -> List[Dict[str, Any]]:
         """Get list of slots containing tiprack labware."""
         tipracks = []
-        for slot, config in self.labware_config["deck_layout"].items():
+        deck_layout = globals.deck_layout if isinstance(globals.deck_layout, dict) else self.labware_config["deck_layout"]
+        for slot, config in deck_layout.items():
             if config and "tiprack" in config["labware_name"].lower():
                 tipracks.append({
                     "slot": slot,
@@ -295,7 +325,8 @@ class LabwareModel:
             
             # Validate slot has tiprack
             slot_key = f"slot_{slot}"
-            slot_config = self.labware_config["deck_layout"].get(slot_key)
+            deck_layout = globals.deck_layout if isinstance(globals.deck_layout, dict) else self.labware_config["deck_layout"]
+            slot_config = deck_layout.get(slot_key)
             if not slot_config:
                 print(f"No labware found in slot {slot}")
                 return False

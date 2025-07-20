@@ -4,11 +4,10 @@ Settings view for the microtissue manipulator GUI.
 
 import sys
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, 
-                           QPushButton, QLabel, QGroupBox, QMessageBox, QProgressBar,
+                           QPushButton, QLabel, QGroupBox, QProgressBar,
                            QDoubleSpinBox, QLineEdit, QComboBox, QTextEdit, QScrollArea, QListWidget, QListWidgetItem)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
-from Model.redirector import StreamRedirector
 
 
 class SettingsView(QWidget):
@@ -20,13 +19,6 @@ class SettingsView(QWidget):
         self.setup_ui()
         self.setup_status_timer()
         self.update_robot_status()
-        
-        # Initialize output redirector with error handling
-        try:
-            self.output_redirector = StreamRedirector(self.status_text)
-        except RuntimeError as e:
-            print(f"StreamRedirector already active: {e}")
-            self.output_redirector = None
 
     
     def setup_ui(self):
@@ -39,10 +31,6 @@ class SettingsView(QWidget):
         # Robot Control Section
         robot_group = self.create_robot_control_group()
         main_layout.addWidget(robot_group)
-        
-        # Robot Status Section
-        status_group = self.create_status_group()
-        main_layout.addWidget(status_group)
         
         # Configuration Section
         config_group = self.create_configuration_group()
@@ -110,25 +98,6 @@ class SettingsView(QWidget):
         self.placeholder_btn_3 = QPushButton("Placeholder 3")
         self.placeholder_btn_3.clicked.connect(self.on_placeholder_3)
         layout.addWidget(self.placeholder_btn_3, 3, 0)
-        
-        group.setLayout(layout)
-        return group
-    
-    def create_status_group(self):
-        """Create general status group."""
-        group = QGroupBox("General Status")
-        layout = QVBoxLayout()
-        
-        # Status display
-        self.status_text = QTextEdit()
-        self.status_text.setMaximumHeight(150)
-        self.status_text.setReadOnly(True)
-        layout.addWidget(self.status_text)
-        
-        # Progress bar
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        layout.addWidget(self.progress_bar)
         
         group.setLayout(layout)
         return group
@@ -214,40 +183,19 @@ class SettingsView(QWidget):
         # All actual status updates come through the StreamRedirector
         pass
     
-    def show_progress(self, message: str = "Processing..."):
-        """Show progress bar with message."""
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)  # Indeterminate progress
-        self.status_text.append(f"\\n{message}")
-    
-    def hide_progress(self):
-        """Hide progress bar."""
-        self.progress_bar.setVisible(False)
-    
-    def show_result(self, success: bool, message: str):
-        """Show operation result."""
-        self.hide_progress()
-        if success:
-            self.status_text.append(f"✓ {message}")
-        else:
-            self.status_text.append(f"✗ {message}")
-    
     # Event handlers
     def on_initialize_robot(self):
         """Handle initialize robot button click."""
         # Disable button to prevent multiple clicks
         self.init_robot_btn.setEnabled(False)
-        self.show_progress("Initializing robot...")
         
         def on_result(success):
-            self.show_result(success, "Robot initialized" if success else "Failed to initialize robot")
+            pass
         
         def on_error(error_msg):
-            self.show_result(False, f"Error initializing robot: {error_msg}")
             print(f"Robot initialization error: {error_msg}")
         
         def on_finished():
-            self.hide_progress()
             # Re-enable button when done
             self.init_robot_btn.setEnabled(True)
         
@@ -255,31 +203,25 @@ class SettingsView(QWidget):
     
     def on_home_robot(self):
         """Handle home robot button click."""
-        self.show_progress("Homing robot...")
         def on_result(success):
-            self.show_result(success, "Robot homed" if success else "Failed to home robot")
+            pass
         def on_error(error_msg):
-            self.show_result(False, f"Error homing robot: {error_msg}")
-        self.controller.home_robot(on_result=on_result, on_error=on_error, on_finished=self.hide_progress)
+            pass
+        self.controller.home_robot(on_result=on_result, on_error=on_error, on_finished=lambda: None)
     
     def on_toggle_lights(self):
         """Handle toggle lights button click."""
-        self.show_progress("Toggling lights...")
         def on_result(success):
-            self.show_result(success, "Lights toggled" if success else "Failed to toggle lights")
+            pass
         def on_error(error_msg):
-            self.show_result(False, f"Error toggling lights: {error_msg}")
-        self.controller.toggle_lights(on_result=on_result, on_error=on_error, on_finished=self.hide_progress)
+            pass
+        self.controller.toggle_lights(on_result=on_result, on_error=on_error, on_finished=lambda: None)
     
     def on_get_run_info(self):
         """Handle get run info button click."""
-        self.show_progress("Getting run info...")
         def on_result(run_info):
-            if run_info:
-                self.show_result(True, "Run info retrieved")
-            else:
-                self.show_result(False, "Failed to get run info")
-        self.controller.get_run_info(on_result=on_result, on_finished=self.hide_progress)
+            pass
+        self.controller.get_run_info(on_result=on_result, on_finished=lambda: None)
     
     def on_create_run(self):
         """Handle create run button click (run name removed)."""
@@ -287,18 +229,16 @@ class SettingsView(QWidget):
             "timestamp": "2025-01-01 12:00:00",
             "status": "created"
         }
-        self.show_progress("Creating run...")
         def on_result(success):
-            self.show_result(success, "Run created" if success else "Failed to create run")
-        self.controller.create_run(run_config, on_result=on_result, on_finished=self.hide_progress)
+            pass
+        self.controller.create_run(run_config, on_result=on_result, on_finished=lambda: None)
     
     def on_load_pipette(self):
         """Handle load pipette button click (removed from UI, but method kept for compatibility)."""
-        self.show_progress("Loading pipette...")
         def on_result(success):
-            self.show_result(success, "Pipette loaded" if success else "Failed to load pipette")
+            pass
         # No pipette type or mount selection
-        self.controller.load_pipette(on_result=on_result, on_finished=self.hide_progress)
+        self.controller.load_pipette(on_result=on_result, on_finished=lambda: None)
     
     def on_add_slot_offsets(self):
         """Handle add slot offsets button click."""
@@ -309,31 +249,26 @@ class SettingsView(QWidget):
         selected_items = self.slot_list_widget.selectedItems()
         slots = [int(item.text()) for item in selected_items]
         if not slots:
-            QMessageBox.warning(self, "Warning", "Please select at least one slot.")
             return
 
-        self.show_progress("Adding slot offsets...")
         def on_result(success):
-            self.show_result(success, f"Slot offsets added: Slots={slots}, X={x}, Y={y}, Z={z}" if success else "Failed to add slot offsets")
-        self.controller.add_slot_offsets(slots, x, y, z, on_result=on_result, on_error=None, on_finished=self.hide_progress)
+            pass
+        self.controller.add_slot_offsets(slots, x, y, z, on_result=on_result, on_error=None, on_finished=lambda: None)
     
     def on_placeholder_1(self):
         """Handle placeholder 1 button click."""
-        self.show_progress("Executing placeholder function 1...")
         def on_result(success):
-            self.show_result(success, "Placeholder function 1 executed" if success else "Placeholder function 1 failed")
-        self.controller.placeholder_function_1(on_result=on_result, on_finished=self.hide_progress)
+            pass
+        self.controller.placeholder_function_1(on_result=on_result, on_finished=lambda: None)
     
     def on_placeholder_2(self):
         """Handle placeholder 2 button click."""
-        self.show_progress("Executing placeholder function 2...")
         def on_result(success):
-            self.show_result(success, "Placeholder function 2 executed" if success else "Placeholder function 2 failed")
-        self.controller.placeholder_function_2(on_result=on_result, on_finished=self.hide_progress)
+            pass
+        self.controller.placeholder_function_2(on_result=on_result, on_finished=lambda: None)
     
     def on_placeholder_3(self):
         """Handle placeholder 3 button click."""
-        self.show_progress("Executing placeholder function 3...")
         def on_result(success):
-            self.show_result(success, "Placeholder function 3 executed" if success else "Placeholder function 3 failed")
-        self.controller.placeholder_function_3(on_result=on_result, on_finished=self.hide_progress)
+            pass
+        self.controller.placeholder_function_3(on_result=on_result, on_finished=lambda: None)

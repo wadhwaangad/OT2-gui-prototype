@@ -4,7 +4,7 @@ Main GUI application for the microtissue manipulator.
 
 import sys
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget, 
-                           QVBoxLayout, QMessageBox, QStatusBar, QMenuBar, QMenu)
+                           QVBoxLayout, QStatusBar, QMenuBar, QMenu)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QIcon
 
@@ -12,6 +12,7 @@ from Controller.main_controller import MainController
 from View.camera_view import CameraView
 from View.settings_view import SettingsView
 from View.labware_view import LabwareView
+from View.status_widget import StatusWidget
 import traceback
 
 class MainWindow(QMainWindow):
@@ -26,6 +27,9 @@ class MainWindow(QMainWindow):
         
         # Connect controller to views
         self.controller.set_views(self, self.settings_view, self.labware_view, self.camera_view)
+        
+        # Pass status widget to controller for universal access
+        self.controller.set_status_widget(self.status_widget)
     
     def setup_ui(self):
         """Setup the main user interface."""
@@ -45,6 +49,11 @@ class MainWindow(QMainWindow):
         self.create_tabs()
         
         layout.addWidget(self.tab_widget)
+        
+        # Add universal status widget at the bottom
+        self.status_widget = StatusWidget()
+        self.status_widget.setMaximumHeight(120)  # Increased from 80 for better proportion
+        layout.addWidget(self.status_widget)
     
     def create_tabs(self):
         """Create the main tabs."""
@@ -150,18 +159,11 @@ class MainWindow(QMainWindow):
     
     def new_configuration(self):
         """Create a new configuration."""
-        reply = QMessageBox.question(
-            self, "New Configuration",
-            "This will clear all current settings. Are you sure?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
+        # Clear deck
+        self.controller.clear_deck()
         
-        if reply == QMessageBox.StandardButton.Yes:
-            # Clear deck
-            self.controller.clear_deck()
-            
-            # Reset settings to defaults
-            self.status_bar.showMessage("New configuration created")
+        # Reset settings to defaults
+        self.status_bar.showMessage("New configuration created")
     
     def open_configuration(self):
         """Open a configuration file."""
@@ -176,7 +178,7 @@ class MainWindow(QMainWindow):
             if success:
                 self.status_bar.showMessage(f"Configuration loaded from {filename}")
             else:
-                QMessageBox.warning(self, "Error", "Failed to load configuration file.")
+                self.status_bar.showMessage("Failed to load configuration file.")
     
     def save_configuration(self):
         """Save the current configuration."""
@@ -191,7 +193,7 @@ class MainWindow(QMainWindow):
             if success:
                 self.status_bar.showMessage(f"Configuration saved to {filename}")
             else:
-                QMessageBox.warning(self, "Error", "Failed to save configuration file.")
+                self.status_bar.showMessage("Failed to save configuration file.")
     
     def refresh_cameras(self):
         """Refresh the camera list."""
@@ -200,85 +202,32 @@ class MainWindow(QMainWindow):
     
     def show_about(self):
         """Show the about dialog."""
-        QMessageBox.about(
-            self, "About Microtissue Manipulator",
-            """
-            <h3>Microtissue Manipulator Control</h3>
-            <p>Version 1.0</p>
-            <p>A PyQt6-based GUI application for controlling microtissue manipulation robots.</p>
-            <p><b>Features:</b></p>
-            <ul>
-                <li>Robot control and configuration</li>
-                <li>Labware deck management</li>
-                <li>Multi-camera support with zoom and focus control</li>
-                <li>Real-time video feeds</li>
-            </ul>
-            <p>Built with PyQt6 and OpenCV</p>
-            """
-        )
+        # Removed modal dialog - info available in documentation
+        self.status_bar.showMessage("Microtissue Manipulator Control v1.0")
     
     def show_user_guide(self):
         """Show the user guide."""
-        QMessageBox.information(
-            self, "User Guide",
-            """
-            <h3>User Guide</h3>
-            <p><b>Settings Tab:</b></p>
-            <ul>
-                <li>Initialize the robot connection</li>
-                <li>Configure slot offsets and pipette settings</li>
-                <li>Control robot lighting and positioning</li>
-                <li>Monitor robot status in real-time</li>
-            </ul>
-            
-            <p><b>Labware Declaration Tab:</b></p>
-            <ul>
-                <li>Click on deck slots to select them</li>
-                <li>Choose labware from the available list</li>
-                <li>Assign labware to selected slots</li>
-                <li>Validate deck layout for completeness</li>
-                <li>Export/import deck configurations</li>
-            </ul>
-            
-            <p><b>Camera View Tab:</b></p>
-            <ul>
-                <li>View all detected cameras</li>
-                <li>Double-click to test a camera</li>
-                <li>Use mouse wheel to zoom in/out</li>
-                <li>Click and drag to pan around</li>
-                <li>Adjust focus with the slider</li>
-                <li>Double-click video to reset view</li>
-            </ul>
-            """
-        )
+        # Removed modal dialog - info available in documentation
+        self.status_bar.showMessage("User guide available in documentation")
     
     def closeEvent(self, event):
         """Handle application close event."""
-        reply = QMessageBox.question(
-            self, "Quit Application",
-            "Are you sure you want to quit?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
+        # Cleanup resources
+        self.controller.cleanup()
         
-        if reply == QMessageBox.StandardButton.Yes:
-            # Cleanup resources
-            self.controller.cleanup()
-            
-            # Automatically delete labware_config.json if it exists
-            try:
-                import os
-                config_file = "labware_config.json"
-                if os.path.exists(config_file):
-                    os.remove(config_file)
-                    print(f"Deleted {config_file}")
-                else:
-                    print(f"{config_file} not found")
-            except Exception as e:
-                print(f"Error handling labware_config.json: {e}")
-            
-            event.accept()
-        else:
-            event.ignore()
+        # Automatically delete labware_config.json if it exists
+        try:
+            import os
+            config_file = "labware_config.json"
+            if os.path.exists(config_file):
+                os.remove(config_file)
+                print(f"Deleted {config_file}")
+            else:
+                print(f"{config_file} not found")
+        except Exception as e:
+            print(f"Error handling labware_config.json: {e}")
+        
+        event.accept()
 
 
 def main():

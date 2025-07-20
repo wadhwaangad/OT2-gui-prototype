@@ -43,6 +43,10 @@ class MainController:
         self.camera_view = camera_view
         # The manual movement view is set in main.py when the tab is created
     
+    def set_status_widget(self, status_widget):
+        """Set reference to the universal status widget."""
+        self.status_widget = status_widget
+    
     # Camera control methods
     def get_available_cameras(self) -> List[tuple]:
         """Get list of available cameras with user-friendly labels if available."""

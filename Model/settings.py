@@ -16,7 +16,6 @@ class SettingsModel:
     
     def __init__(self):
         self.lights_on = False
-        self.current_run_info = {}
         self.active_threads=[]
 
     def run_in_thread(self, fn, *args, on_result=None, on_error=None, on_finished=None, **kwargs):
@@ -106,10 +105,53 @@ class SettingsModel:
             if not globals.robot_api:
                 print("Robot not initialized. Please initialize first.")
                 return {}
-            self.current_run_info = globals.robot_api.get_run_info()
+            globals.current_run_info = globals.robot_api.get_run_info()
             globals.get_run_info = True
+            
+            # Load protocol file names from protocols directory into protocol_labware
+            protocols_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'protocols')
+            protocol_files = []
+            
+            if os.path.exists(protocols_dir):
+                for filename in os.listdir(protocols_dir):
+                    if filename.endswith('.json'):
+                        # Remove the .json extension to get the protocol name
+                        protocol_name = os.path.splitext(filename)[0]
+                        protocol_files.append(protocol_name)
+                
+                if protocol_files:
+                    globals.protocol_labware = protocol_files
+                    globals.custom_labware = True
+                    print(f"Loaded protocol files into protocol_labware: {protocol_files}")
+            
+            # Parse run info only to recreate slot assignments from previous runs
+            if globals.current_run_info and 'data' in globals.current_run_info:
+                if isinstance(globals.current_run_info['data'], list) and len(globals.current_run_info['data']) > 0:
+                    # Get the last entry in the data array
+                    last_run_data = globals.current_run_info['data'][-1]
+                    
+                    if 'labware' in last_run_data:
+                        # Parse labware items to recreate slot assignments only
+                        for labware_item in last_run_data['labware']:
+                            load_name = None
+                            slot = None
+                            
+                            if 'loadName' in labware_item:
+                                load_name = labware_item['loadName']
+                            
+                            if 'location' in labware_item and 'slotName' in labware_item['location']:
+                                try:
+                                    slot = int(labware_item['location']['slotName'])
+                                    if 1 <= slot <= 12 and load_name:  # Valid slot range and load_name exists
+                                        globals.deck_layout[f'slot_{slot}'] = load_name
+                                except (ValueError, TypeError):
+                                    print(f"Warning: Invalid slot name in labware item: {labware_item.get('location', {}).get('slotName')}")
+                                    continue
+                        
+                        print("Recreated slot assignments from previous run info")
+            
             print("Getting run info...")
-            return self.current_run_info
+            return globals.current_run_info
         except Exception as e:
             print(f"Error getting run info: {e}")
             return {}
@@ -123,6 +165,26 @@ class SettingsModel:
                 print("Robot not initialized. Please initialize first.")
                 return False
             globals.robot_api.create_run()
+            
+            # Clear all labware from the list including protocol labware and slot assignments
+            globals.custom_labware = False
+            globals.protocol_labware = []
+            globals.deck_layout = {
+                "slot_1": None,
+                "slot_2": None,
+                "slot_3": None,
+                "slot_4": None,
+                "slot_5": None,
+                "slot_6": None,
+                "slot_7": None,
+                "slot_8": None,
+                "slot_9": None,
+                "slot_10": None,
+                "slot_11": None,
+                "slot_12": None
+            }
+            print("Cleared all labware from the list including protocol labware and all slot assignments")
+            
             print(f"Creating run with config: {run_config}")
             return True
         except Exception as e:

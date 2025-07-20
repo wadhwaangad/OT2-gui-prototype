@@ -5,8 +5,8 @@ Camera view for the microtissue manipulator GUI.
 import cv2
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget, 
                            QListWidgetItem, QPushButton, QLabel, QSlider, 
-                           QSpinBox, QGroupBox, QMessageBox, QDialog, QDialogButtonBox,
-                           QSplitter, QFrame, QCheckBox, QComboBox)
+                           QSpinBox, QGroupBox, QDialog, QDialogButtonBox,
+                           QSplitter, QFrame, QCheckBox, QComboBox, QScrollArea)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QPixmap, QImage
 from View.zoomable_video_widget import VideoDisplayWidget
@@ -179,7 +179,7 @@ class CameraTestWindow(QDialog):
             self.is_capturing = True
             self.capture_btn.setText("Stop Capture")
         else:
-            QMessageBox.warning(self, "Error", f"Failed to start capture for {self.camera_name}")
+            pass  # Backend handles error messaging
     
     def stop_capture(self):
         """Stop camera capture."""
@@ -235,6 +235,11 @@ class CameraView(QWidget):
     
     def setup_ui(self):
         """Setup the user interface."""
+        # Create scroll area for the main content
+        scroll_area = QScrollArea()
+        scroll_widget = QWidget()
+        main_layout = QVBoxLayout(scroll_widget)
+        
         # Create main splitter
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
         
@@ -249,9 +254,16 @@ class CameraView(QWidget):
         # Set splitter proportions
         main_splitter.setSizes([400, 800])
         
+        # Add splitter to scroll widget
+        main_layout.addWidget(main_splitter)
+        
+        # Set up scroll area
+        scroll_area.setWidget(scroll_widget)
+        scroll_area.setWidgetResizable(True)
+        
         # Main layout
         layout = QVBoxLayout()
-        layout.addWidget(main_splitter)
+        layout.addWidget(scroll_area)
         self.setLayout(layout)
         
         # Connect camera list selection
@@ -357,39 +369,6 @@ class CameraView(QWidget):
         controls_group.setLayout(controls_layout)
         layout.addWidget(controls_group)
 
-        # Instructions
-        instructions_group = QGroupBox("Instructions")
-        instructions_layout = QVBoxLayout()
-
-        instructions = QLabel("""
-        Camera Controls:
-
-        • Select a camera from the list
-        • Choose display mode (Embedded/Window)
-        • Set resolution (preset or custom)
-        • Click "Start Camera" to begin capture
-        • Use focus slider to adjust camera focus
-        • Double-click camera list for separate window
-
-        Embedded View Controls:
-        • Mouse wheel: Zoom in/out
-        • Click and drag: Pan around
-        • Double-click: Reset view
-        • Reset View button: Center and reset zoom
-
-        Tips:
-        • Multiple cameras can run simultaneously
-        • Focus adjustment works in real-time
-        • Embedded view is zoomable and pannable
-        """)
-
-        instructions.setWordWrap(True)
-        instructions.setAlignment(Qt.AlignmentFlag.AlignTop)
-        instructions_layout.addWidget(instructions)
-
-        instructions_group.setLayout(instructions_layout)
-        layout.addWidget(instructions_group)
-
         left_widget.setLayout(layout)
         left_widget.setMaximumWidth(400)
         return left_widget
@@ -410,8 +389,7 @@ class CameraView(QWidget):
         
         # Video display widget
         self.embedded_video_display = VideoDisplayWidget()
-        self.embedded_video_display.setMinimumSize(640, 480)
-        display_layout.addWidget(self.embedded_video_display)
+        display_layout.addWidget(self.embedded_video_display, 1)  # Give it stretch factor
         
         display_group.setLayout(display_layout)
         layout.addWidget(display_group)
@@ -560,9 +538,9 @@ class CameraView(QWidget):
                 self.focus_slider.setEnabled(True)
                 self.reset_view_btn.setEnabled(True)
             else:
-                QMessageBox.warning(self, "Error", f"Failed to start camera: {camera_name}")
+                pass  # Backend handles error messaging
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error starting camera: {str(e)}")
+            pass  # Backend handles error messaging
     
     def stop_embedded_camera(self, camera_name: str):
         """Stop an embedded camera."""
@@ -578,7 +556,7 @@ class CameraView(QWidget):
             self.focus_slider.setEnabled(False)
             self.reset_view_btn.setEnabled(False)
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error stopping camera: {str(e)}")
+            pass  # Backend handles error messaging
     
     def stop_all_cameras(self):
         """Stop all active cameras."""
@@ -590,7 +568,7 @@ class CameraView(QWidget):
         for window in list(self.test_windows.values()):
             window.close()
         
-        QMessageBox.information(self, "Info", "All cameras stopped")
+        # Removed confirmation message - backend handles it
     
     def update_embedded_display(self):
         """Update the embedded camera display."""

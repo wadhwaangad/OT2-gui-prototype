@@ -4,7 +4,7 @@ Labware view for the microtissue manipulator GUI.
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, 
                            QPushButton, QLabel, QGroupBox, QComboBox, QListWidget,
-                           QListWidgetItem, QMessageBox, QFileDialog, QLineEdit,
+                           QListWidgetItem, QFileDialog, QLineEdit,
                            QSpinBox, QTextEdit, QScrollArea, QFrame, QDialog,
                            QDialogButtonBox, QFormLayout)
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -322,18 +322,6 @@ class LabwareView(QWidget):
         tip_group.setLayout(tip_layout)
         layout.addWidget(tip_group)
         
-        # Information panel
-        info_group = QGroupBox("Information")
-        info_layout = QVBoxLayout()
-        
-        self.info_text = QTextEdit()
-        self.info_text.setMaximumHeight(150)
-        self.info_text.setReadOnly(True)
-        info_layout.addWidget(self.info_text)
-        
-        info_group.setLayout(info_layout)
-        layout.addWidget(info_group)
-        
         group.setLayout(layout)
         return group
     
@@ -388,11 +376,9 @@ class LabwareView(QWidget):
     def on_assign_labware(self):
         """Handle assign labware button click."""
         if not hasattr(self, 'selected_slot'):
-            QMessageBox.warning(self, "Warning", "Please select a slot first.")
             return
         
         if not self.labware_list.currentItem():
-            QMessageBox.warning(self, "Warning", "Please select a labware type first.")
             return
             
         slot_number = int(self.selected_slot)
@@ -400,15 +386,11 @@ class LabwareView(QWidget):
         
         def on_success(result):
             if result:
-                self.info_text.append(f"\n✓ Assigned {labware_name} to slot {slot_number}")
                 self.update_deck_display()
                 self.update_tiprack_list()
-            else:
-                self.info_text.append(f"\n✗ Failed to assign labware to slot {slot_number}")
             self.assign_labware_btn.setEnabled(True)
         
         def on_error(error):
-            self.info_text.append(f"\n✗ Error assigning labware: {error}")
             self.assign_labware_btn.setEnabled(True)
         
         def on_finished():
@@ -416,7 +398,6 @@ class LabwareView(QWidget):
         
         # Disable button during operation
         self.assign_labware_btn.setEnabled(False)
-        self.info_text.append(f"\nAssigning {labware_name} to slot {slot_number}...")
         
         self.controller.set_slot_labware(
             slot_number, 
@@ -429,32 +410,20 @@ class LabwareView(QWidget):
     def on_clear_slot(self):
         """Handle clear slot button click."""
         if not hasattr(self, 'selected_slot'):
-            QMessageBox.warning(self, "Warning", "Please select a slot first.")
             return
         
-        reply = QMessageBox.question(
-            self, "Confirm", 
-            f"Are you sure you want to clear slot {self.selected_slot}?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            success = self.controller.clear_slot(f"slot_{self.selected_slot}")
-            if success:
-                self.info_text.append(f"\\n✓ Cleared slot {self.selected_slot}")
-            else:
-                self.info_text.append(f"\\n✗ Failed to clear slot {self.selected_slot}")
+        success = self.controller.clear_slot(f"slot_{self.selected_slot}")
+        # Update display regardless of success/failure - backend handles it
     
     def on_add_custom_labware(self):
         """Handle add custom labware button click."""
         def on_success(result):
             """Called when custom labware is successfully added."""
-            self.info_text.append("\n✓ Custom labware added successfully")
             self.update_labware_list()  # Refresh the labware list
             
         def on_error(error):
             """Called when there's an error adding custom labware."""
-            self.info_text.append(f"\n✗ Failed to add custom labware: {error}")
+            pass
             
         def on_finished():
             """Called when the operation finishes (success or failure)."""
@@ -463,7 +432,6 @@ class LabwareView(QWidget):
         
         # Disable button during operation
         self.add_custom_btn.setEnabled(False)
-        self.info_text.append("\nAdding custom labware...")
         
         # Call controller with callbacks
         self.controller.add_custom_labware(
@@ -475,29 +443,21 @@ class LabwareView(QWidget):
     def on_pickup_tip(self):
         """Handle pick up tip button click."""
         if not hasattr(self, 'selected_slot'):
-            QMessageBox.warning(self, "Warning", "Please select a tiprack slot first.")
             return
         
         row = self.row_edit.text().strip().upper()
         column = self.column_spinbox.value()
         
         if not row or len(row) != 1 or not row.isalpha():
-            QMessageBox.warning(self, "Warning", "Row must be a single letter (A-H).")
             return
         
         if column < 1 or column > 12:
-            QMessageBox.warning(self, "Warning", "Column must be between 1 and 12.")
             return
         
         def on_success(result):
-            if result:
-                self.info_text.append(f"\n✓ Picked up tip from slot {self.selected_slot} at {row}{column}")
-            else:
-                self.info_text.append(f"\n✗ Failed to pick up tip from slot {self.selected_slot} at {row}{column}")
             self.pickup_tip_btn.setEnabled(True)
         
         def on_error(error):
-            self.info_text.append(f"\n✗ Error picking up tip: {error}")
             self.pickup_tip_btn.setEnabled(True)
         
         def on_finished():
@@ -505,7 +465,6 @@ class LabwareView(QWidget):
         
         # Disable button during operation
         self.pickup_tip_btn.setEnabled(False)
-        self.info_text.append(f"\nPicking up tip from slot {self.selected_slot} at {row}{column}...")
         
         self.controller.pickup_tip(
             int(self.selected_slot), 
