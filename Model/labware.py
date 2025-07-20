@@ -235,37 +235,33 @@ class LabwareModel:
             return False
 
         success = True
-        
-        # If we have run info available, skip the upload process (already uploaded)
-        if globals.get_run_info:
-            print("Using existing run info, skipping labware upload.")
-        else:
-            # Upload custom labware to robot
-            if not globals.robot_api or not globals.robot_initialized:
-                print("Robot not initialized. Please initialize first.")
-                return False
-                
-            for json_file_name in json_files:
-                custom_labware_path = os.path.join(protocols_dir, json_file_name)
-                try:
-                    with open(custom_labware_path, 'r', encoding='utf-8') as json_file:
-                        custom_labware = json.load(json_file)
 
-                    command_dict = {
-                        "data": custom_labware
-                    }
-                    command_payload = json.dumps(command_dict)
+        # Upload custom labware to robot
+        if not globals.robot_api or not globals.robot_initialized:
+            print("Robot not initialized. Please initialize first.")
+            return False
 
-                    url = globals.robot_api.get_url('runs') + f'/{globals.robot_api.run_id}/' + 'labware_definitions'
-                    r = requests.post(url=url, headers=globals.robot_api.HEADERS, params={"waitUntilComplete": True}, data=command_payload)
-                    if not r.ok:
-                        print(f"Failed to upload {json_file_name}: {r.text}")
-                        success = False
-                    else:
-                        print(f"Successfully uploaded {json_file_name}")
-                except Exception as e:
-                    print(f"Error uploading {json_file_name}: {e}")
+        for json_file_name in json_files:
+            custom_labware_path = os.path.join(protocols_dir, json_file_name)
+            try:
+                with open(custom_labware_path, 'r', encoding='utf-8') as json_file:
+                    custom_labware = json.load(json_file)
+
+                command_dict = {
+                    "data": custom_labware
+                }
+                command_payload = json.dumps(command_dict)
+
+                url = globals.robot_api.get_url('runs') + f'/{globals.robot_api.run_id}/' + 'labware_definitions'
+                r = requests.post(url=url, headers=globals.robot_api.HEADERS, params={"waitUntilComplete": True}, data=command_payload)
+                if not r.ok:
+                    print(f"Failed to upload {json_file_name}: {r.text}")
                     success = False
+                else:
+                    print(f"Successfully uploaded {json_file_name}")
+            except Exception as e:
+                print(f"Error uploading {json_file_name}: {e}")
+                success = False
         
         # Only set custom_labware to True and update the list if we were successful
         if success:
