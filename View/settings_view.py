@@ -81,23 +81,20 @@ class SettingsView(QWidget):
         self.toggle_lights_btn.clicked.connect(self.on_toggle_lights)
         layout.addWidget(self.toggle_lights_btn, 0, 2)
         
-        # Retract Axis
-        self.retract_axis_btn = QPushButton("Retract Axis")
-        self.retract_axis_btn.clicked.connect(self.on_retract_axis)
-        layout.addWidget(self.retract_axis_btn, 1, 0)
-        
         # Get Run Info
         self.get_run_info_btn = QPushButton("Get Run Info")
         self.get_run_info_btn.clicked.connect(self.on_get_run_info)
-        layout.addWidget(self.get_run_info_btn, 1, 1)
+        layout.addWidget(self.get_run_info_btn, 1, 0)
         
         # Create Run
         self.create_run_btn = QPushButton("Create Run")
         self.create_run_btn.clicked.connect(self.on_create_run)
-        layout.addWidget(self.create_run_btn, 1, 2)
+        layout.addWidget(self.create_run_btn, 1, 1)
         
         # Load Pipette
         self.load_pipette_btn = QPushButton("Load Pipette")
+        self.load_pipette_btn.clicked.connect(self.on_load_pipette)
+        layout.addWidget(self.load_pipette_btn, 1, 2)
         self.load_pipette_btn.clicked.connect(self.on_load_pipette)
         layout.addWidget(self.load_pipette_btn, 2, 0)
         
@@ -141,48 +138,42 @@ class SettingsView(QWidget):
         group = QGroupBox("Configuration")
         layout = QGridLayout()
 
-        # Axis Selection for Retraction (move to top)
-        layout.addWidget(QLabel("Retract Axis:"), 0, 0)
-        self.retract_axis_combo = QComboBox()
-        self.retract_axis_combo.addItems(["x", "y", "leftZ", "rightZ", "leftPlunger", "rightPlunger", "extensionZ", "extensionJaw", "axis96ChannelCam"])
-        layout.addWidget(self.retract_axis_combo, 0, 1)
-
         # Slot selection list (expanded size)
-        layout.addWidget(QLabel("Select Slots:"), 2, 0, 1, 2)
+        layout.addWidget(QLabel("Select Slots:"), 0, 0, 1, 2)
         self.slot_list_widget = QListWidget()
         self.slot_list_widget.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         self.slot_list_widget.setMinimumHeight(120)  # Make the slot list taller
         self.slot_list_widget.setMinimumWidth(120)   # Make the slot list wider
         for i in range(1, 13):
             self.slot_list_widget.addItem(QListWidgetItem(str(i)))
-        layout.addWidget(self.slot_list_widget, 3, 0, 1, 2)
+        layout.addWidget(self.slot_list_widget, 1, 0, 1, 2)
 
         # X, Y, Z spinboxes moved down and spaced out
-        layout.addWidget(QLabel("X:"), 4, 0)
+        layout.addWidget(QLabel("X:"), 2, 0)
         self.offset_x_spinbox = QDoubleSpinBox()
         self.offset_x_spinbox.setMinimum(-1000.0)
         self.offset_x_spinbox.setMaximum(1000.0)
         self.offset_x_spinbox.setDecimals(2)
-        layout.addWidget(self.offset_x_spinbox, 4, 1)
+        layout.addWidget(self.offset_x_spinbox, 2, 1)
 
-        layout.addWidget(QLabel("Y:"), 5, 0)
+        layout.addWidget(QLabel("Y:"), 3, 0)
         self.offset_y_spinbox = QDoubleSpinBox()
         self.offset_y_spinbox.setMinimum(-1000.0)
         self.offset_y_spinbox.setMaximum(1000.0)
         self.offset_y_spinbox.setDecimals(2)
-        layout.addWidget(self.offset_y_spinbox, 5, 1)
+        layout.addWidget(self.offset_y_spinbox, 3, 1)
 
-        layout.addWidget(QLabel("Z:"), 6, 0)
+        layout.addWidget(QLabel("Z:"), 4, 0)
         self.offset_z_spinbox = QDoubleSpinBox()
         self.offset_z_spinbox.setMinimum(-1000.0)
         self.offset_z_spinbox.setMaximum(1000.0)
         self.offset_z_spinbox.setDecimals(2)
-        layout.addWidget(self.offset_z_spinbox, 6, 1)
+        layout.addWidget(self.offset_z_spinbox, 4, 1)
 
         # Add Slot Offsets Button
         self.add_offsets_btn = QPushButton("Add Slot Offsets")
         self.add_offsets_btn.clicked.connect(self.on_add_slot_offsets)
-        layout.addWidget(self.add_offsets_btn, 7, 0, 1, 2)
+        layout.addWidget(self.add_offsets_btn, 5, 0, 1, 2)
 
         group.setLayout(layout)
         return group
@@ -201,8 +192,7 @@ class SettingsView(QWidget):
         3. Toggle Lights: Turn robot lighting on/off
         4. Home Robot: Move robot to home position
         5. Get Run Info: Retrieve current run status and information
-        6. Retract Axis: Safely retract specified axis
-        7. Create Run: Initialize a new experimental run
+        6. Create Run: Initialize a new experimental run
         
         Note: Some functions require the robot to be initialized first.
         """)
@@ -280,14 +270,6 @@ class SettingsView(QWidget):
         def on_error(error_msg):
             self.show_result(False, f"Error toggling lights: {error_msg}")
         self.controller.toggle_lights(on_result=on_result, on_error=on_error, on_finished=self.hide_progress)
-    
-    def on_retract_axis(self):
-        """Handle retract axis button click."""
-        axis = self.retract_axis_combo.currentText()
-        self.show_progress(f"Retracting {axis} axis...")
-        def on_result(success):
-            self.show_result(success, f"{axis} axis retracted" if success else f"Failed to retract {axis} axis")
-        self.controller.retract_axis(axis, on_result=on_result, on_finished=self.hide_progress)
     
     def on_get_run_info(self):
         """Handle get run info button click."""

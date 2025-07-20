@@ -114,18 +114,7 @@ class SettingsModel:
             print(f"Error getting run info: {e}")
             return {}
     
-    def retract_axis(self, axis: str) -> bool:
-        """Retract a specific axis."""
-        try:
-            if not globals.robot_initialized:
-                print("Robot not initialized. Please initialize first.")
-                return False
-            globals.robot_api.retract_axis(axis)
-            print(f"Retracting axis: {axis}")
-            return True
-        except Exception as e:
-            print(f"Error retracting axis {axis}: {e}")
-            return False
+
     
     def create_run(self, run_config: Dict[str, Any]) -> bool:
         """Create a new run with the given configuration."""

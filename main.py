@@ -264,24 +264,13 @@ class MainWindow(QMainWindow):
             # Cleanup resources
             self.controller.cleanup()
             
-            # Check if labware_config.json exists and ask user about saving/deleting
+            # Automatically delete labware_config.json if it exists
             try:
                 import os
                 config_file = "labware_config.json"
                 if os.path.exists(config_file):
-                    save_reply = QMessageBox.question(
-                        self, "Save Configuration",
-                        "Do you want to save the current labware configuration?\n\n"
-                        "Choose 'Yes' to keep the configuration file for next time,\n"
-                        "or 'No' to delete it.",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                    )
-                    
-                    if save_reply == QMessageBox.StandardButton.No:
-                        os.remove(config_file)
-                        print(f"Deleted {config_file}")
-                    else:
-                        print(f"Kept {config_file}")
+                    os.remove(config_file)
+                    print(f"Deleted {config_file}")
                 else:
                     print(f"{config_file} not found")
             except Exception as e:
@@ -312,14 +301,15 @@ def main():
         print(f"Application error: {e}")
         traceback.print_exc()
         
-        # Ensure labware config is saved in case of crash
+        # Ensure labware config is deleted in case of crash
         try:
             import os
             config_file = "labware_config.json"
             if os.path.exists(config_file):
-                print(f"Application crashed - keeping {config_file} for recovery")
+                os.remove(config_file)
+                print(f"Application crashed - deleted {config_file}")
         except Exception as config_error:
-            print(f"Error checking config file during crash: {config_error}")
+            print(f"Error deleting config file during crash: {config_error}")
         
         # Re-raise the exception to ensure proper exit
         raise

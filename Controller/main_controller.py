@@ -183,7 +183,7 @@ class MainController:
 
     def retract_axis(self, axis: str, on_result=None, on_error=None, on_finished=None):
         """Retract a specific axis in a thread."""
-        return self.settings_model.run_in_thread(self.settings_model.retract_axis, axis, on_result=on_result, on_error=on_error, on_finished=on_finished)
+        return self.manual_movement_model.run_in_thread(self.manual_movement_model.retract_axis, axis, on_result=on_result, on_error=on_error, on_finished=on_finished)
 
     def create_run(self, run_config: Dict[str, Any], on_result=None, on_error=None, on_finished=None):
         """Create a new run in a thread."""
@@ -331,6 +331,47 @@ class MainController:
         except Exception as e:
             print(f"Error moving robot: {e}")
             return False
+
+    # Keyboard movement control methods
+    def activate_keyboard_movement(self) -> bool:
+        """Activate keyboard movement controls."""
+        return self.manual_movement_model.activate_keyboard_movement()
+
+    def deactivate_keyboard_movement(self) -> bool:
+        """Deactivate keyboard movement controls."""
+        return self.manual_movement_model.deactivate_keyboard_movement()
+
+    def increase_step(self) -> bool:
+        """Increase movement step size."""
+        return self.manual_movement_model.increase_step()
+
+    def decrease_step(self) -> bool:
+        """Decrease movement step size."""
+        return self.manual_movement_model.decrease_step()
+
+    def save_position(self) -> bool:
+        """Save current robot position."""
+        return self.manual_movement_model.save_position()
+
+    def clear_saved_positions(self):
+        """Clear all saved positions."""
+        self.manual_movement_model.clear_saved_positions()
+
+    def get_saved_positions(self) -> list:
+        """Get all saved positions."""
+        return self.manual_movement_model.get_saved_positions()
+
+    def get_current_step(self) -> float:
+        """Get the current step size."""
+        return self.manual_movement_model.get_current_step()
+
+    def set_step(self, step: float) -> bool:
+        """Set the step size."""
+        return self.manual_movement_model.set_step(step)
+
+    def is_keyboard_active(self) -> bool:
+        """Check if keyboard movement is active."""
+        return self.manual_movement_model.is_keyboard_active()
 
     # Cleanup methods
     def cleanup(self):
