@@ -97,7 +97,7 @@ class LabwareModel:
         """Get list of available labware types as strings, including protocol JSONs."""
         # Add protocol JSONs (without .json extension)
         if globals.get_run_info or globals.custom_labware:
-            return self.get_built_in_labware() + globals.protcol_labware
+            return self.get_built_in_labware() + globals.protocol_labware
         return self.get_built_in_labware()
     
     def get_built_in_labware(self) -> List[str]:

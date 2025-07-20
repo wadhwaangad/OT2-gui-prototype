@@ -220,7 +220,10 @@ class SettingsView(QWidget):
     def on_get_run_info(self):
         """Handle get run info button click."""
         def on_result(run_info):
-            pass
+            # Update labware view when run info is retrieved
+            if hasattr(self.controller, 'labware_view') and self.controller.labware_view:
+                self.controller.labware_view.update_labware_list()
+                self.controller.labware_view.update_deck_display()
         self.controller.get_run_info(on_result=on_result, on_finished=lambda: None)
     
     def on_create_run(self):
@@ -230,7 +233,10 @@ class SettingsView(QWidget):
             "status": "created"
         }
         def on_result(success):
-            pass
+            # Update labware view when run is created (clears labware)
+            if hasattr(self.controller, 'labware_view') and self.controller.labware_view:
+                self.controller.labware_view.update_labware_list()
+                self.controller.labware_view.update_deck_display()
         self.controller.create_run(run_config, on_result=on_result, on_finished=lambda: None)
     
     def on_load_pipette(self):

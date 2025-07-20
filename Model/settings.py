@@ -143,7 +143,11 @@ class SettingsModel:
                                 try:
                                     slot = int(labware_item['location']['slotName'])
                                     if 1 <= slot <= 12 and load_name:  # Valid slot range and load_name exists
-                                        globals.deck_layout[f'slot_{slot}'] = load_name
+                                        # Create proper labware info structure
+                                        globals.deck_layout[f'slot_{slot}'] = {
+                                            "labware_name": load_name,
+                                            "labware_type": load_name.split('_')[2] if len(load_name.split('_')) > 2 else load_name
+                                        }
                                 except (ValueError, TypeError):
                                     print(f"Warning: Invalid slot name in labware item: {labware_item.get('location', {}).get('slotName')}")
                                     continue

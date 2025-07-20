@@ -115,7 +115,17 @@ class DeckSlotWidget(QFrame):
         """Set the labware for this slot."""
         self.labware_info = labware_info
         if labware_info:
-            self.labware_label.setText(labware_info["labware_name"])
+            # Handle both string and dictionary formats
+            if isinstance(labware_info, dict):
+                self.labware_label.setText(labware_info["labware_name"])
+            else:
+                # Backward compatibility for string format
+                self.labware_label.setText(str(labware_info))
+                # Convert string to dict format for consistency
+                self.labware_info = {
+                    "labware_name": str(labware_info),
+                    "labware_type": str(labware_info)
+                }
         else:
             self.labware_label.setText("Empty")
         self.update_appearance()
