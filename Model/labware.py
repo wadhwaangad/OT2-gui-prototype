@@ -177,13 +177,11 @@ class LabwareModel:
     def clear_slot(self, slot: int) -> bool:
         """Clear labware from a specific deck slot."""
         try:
-            if slot not in self.labware_config["deck_layout"]:
-                print(f"Invalid slot: {slot}")
-                return False
-            globals.robot_api.move_labware(globals.robot_api.labware_dct[slot], "offDeck")
+            globals.robot_api.move_labware(globals.robot_api.labware_dct[str(slot)], "offDeck")
+            print(globals.robot_api.labware_dct[str(slot)])
             # Clear from both global and local configuration
-            globals.deck_layout[slot] = None
-            self.labware_config["deck_layout"][slot] = None
+            globals.deck_layout[f"slot_{slot}"] = None
+            self.labware_config["deck_layout"][f"slot_{slot}"] = None
             self.save_labware_config()
             return True
         except Exception as e:

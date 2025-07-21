@@ -125,10 +125,10 @@ class SettingsModel:
                     print(f"Loaded protocol files into protocol_labware: {protocol_files}")
             
             # Parse run info only to recreate slot assignments from previous runs
-            if globals.current_run_info and 'data' in globals.current_run_info:
-                if isinstance(globals.current_run_info['data'], list) and len(globals.current_run_info['data']) > 0:
+            if globals.current_run_info:
+                if isinstance(globals.current_run_info, list) and len(globals.current_run_info) > 0:
                     # Get the last entry in the data array
-                    last_run_data = globals.current_run_info['data'][-1]
+                    last_run_data = globals.current_run_info[-1]
                     
                     if 'labware' in last_run_data:
                         # Parse labware items to recreate slot assignments only
@@ -148,11 +148,12 @@ class SettingsModel:
                                             "labware_name": load_name,
                                             "labware_type": load_name.split('_')[2] if len(load_name.split('_')) > 2 else load_name
                                         }
+                                        
                                 except (ValueError, TypeError):
                                     print(f"Warning: Invalid slot name in labware item: {labware_item.get('location', {}).get('slotName')}")
                                     continue
-                        
                         print("Recreated slot assignments from previous run info")
+
             
             print("Getting run info...")
             return globals.current_run_info

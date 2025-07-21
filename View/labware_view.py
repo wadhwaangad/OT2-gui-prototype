@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                            QDialogButtonBox, QFormLayout)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QPalette, QColor
-
+import Model.globals as globals
 
 class AddCustomLabwareDialog(QDialog):
     """Dialog for adding custom labware."""
@@ -338,7 +338,7 @@ class LabwareView(QWidget):
     def update_deck_display(self):
         """Update the deck display with current layout."""
         deck_layout = self.controller.get_deck_layout()
-        
+
         for slot_num, slot_widget in self.deck_slots.items():
             labware_info = deck_layout.get(f"slot_{slot_num}")
             slot_widget.set_labware(labware_info)
@@ -422,7 +422,7 @@ class LabwareView(QWidget):
         if not hasattr(self, 'selected_slot'):
             return
         
-        success = self.controller.clear_slot(f"slot_{self.selected_slot}")
+        success = self.controller.clear_slot(self.selected_slot)
         # Update display regardless of success/failure - backend handles it
     
     def on_add_custom_labware(self):
