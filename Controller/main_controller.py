@@ -377,6 +377,50 @@ class MainController:
         """Check if keyboard movement is active."""
         return self.manual_movement_model.is_keyboard_active()
 
+    # Pipetting operation methods
+    def aspirate(self, labware_id: str, well_name: str, well_location: str = 'top', 
+                 offset: tuple = (0,0,0), volume_offset: int = 0, volume: int = 25, 
+                 flow_rate: int = 25) -> bool:
+        """Aspirate from a specific well."""
+        return self.manual_movement_model.aspirate(labware_id, well_name, well_location, 
+                                                  offset, volume_offset, volume, flow_rate)
+
+    def dispense(self, labware_id: str, well_name: str, well_location: str = 'top',
+                 offset: tuple = (0,0,0), volume_offset: int = 0, volume: int = 25,
+                 flow_rate: int = 25, pushout: int = 0) -> bool:
+        """Dispense to a specific well."""
+        return self.manual_movement_model.dispense(labware_id, well_name, well_location, offset,
+                                                  volume_offset, volume, flow_rate, pushout)
+
+    def blow_out(self, labware_id: str, well_name: str, well_location: str = 'top',
+                 flow_rate: int = 25) -> bool:
+        """Blow out to a specific well."""
+        return self.manual_movement_model.blow_out(labware_id, well_name, well_location, flow_rate)
+
+    def set_aspirate_params(self, volume: int, flow_rate: int):
+        """Set parameters for aspirate in place."""
+        self.manual_movement_model.set_aspirate_params(volume, flow_rate)
+
+    def set_dispense_params(self, volume: int, flow_rate: int, pushout: int = 0):
+        """Set parameters for dispense in place."""
+        self.manual_movement_model.set_dispense_params(volume, flow_rate, pushout)
+
+    def set_blow_out_params(self, flow_rate: int):
+        """Set parameters for blow out in place."""
+        self.manual_movement_model.set_blow_out_params(flow_rate)
+
+    def get_aspirate_params(self):
+        """Get current aspirate parameters."""
+        return self.manual_movement_model.get_aspirate_params()
+
+    def get_dispense_params(self):
+        """Get current dispense parameters."""
+        return self.manual_movement_model.get_dispense_params()
+
+    def get_blow_out_params(self):
+        """Get current blow out parameters."""
+        return self.manual_movement_model.get_blow_out_params()
+
     # Cleanup methods
     def cleanup(self):
         """Cleanup resources when closing application."""

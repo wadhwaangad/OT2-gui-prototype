@@ -30,6 +30,9 @@ class MainWindow(QMainWindow):
         
         # Pass status widget to controller for universal access
         self.controller.set_status_widget(self.status_widget)
+        
+        # Delay status timer start to allow full initialization
+        QTimer.singleShot(2000, self.start_status_timer)  # Start after 2 seconds
     
     def setup_ui(self):
         """Setup the main user interface."""
@@ -42,6 +45,10 @@ class MainWindow(QMainWindow):
         
         layout = QVBoxLayout(central_widget)
         
+        # Add universal status widget at the top
+        self.status_widget = StatusWidget()
+        layout.addWidget(self.status_widget)
+        
         # Create tab widget
         self.tab_widget = QTabWidget()
         
@@ -49,11 +56,6 @@ class MainWindow(QMainWindow):
         self.create_tabs()
         
         layout.addWidget(self.tab_widget)
-        
-        # Add universal status widget at the bottom
-        self.status_widget = StatusWidget()
-        self.status_widget.setMaximumHeight(120)  # Increased from 80 for better proportion
-        layout.addWidget(self.status_widget)
     
     def create_tabs(self):
         """Create the main tabs."""
@@ -137,25 +139,40 @@ class MainWindow(QMainWindow):
         # Show ready message
         self.status_bar.showMessage("Ready")
         
-        # Setup status update timer
+        # Setup status update timer (will be started later)
         self.status_timer = QTimer()
         self.status_timer.timeout.connect(self.update_status)
-        self.status_timer.start(100)  # Update every 5 seconds
+    
+    def start_status_timer(self):
+        """Start the status update timer after initialization is complete."""
+        self.status_timer.start(1000)  # Update every 1 second
     
     def update_status(self):
         """Update the status bar with current information."""
         try:
-            # Get system status
-            robot_status = self.controller.get_robot_status()
-            occupied_slots = len(self.controller.get_occupied_slots())
-            
-            status_text = f"Robot: {'Connected' if robot_status['initialized'] else 'Disconnected'} | "
-            status_text += f"Occupied Slots: {occupied_slots} | "
-            status_text += f"Lights: {'On' if robot_status['lights_on'] else 'Off'}"
-            
-            self.status_bar.showMessage(status_text)
+            # Add safety check for controller initialization
+            if not hasattr(self, 'controller') or self.controller is None:
+                self.status_bar.showMessage("Initializing...")
+                return
+                
+            # Get system status with error handling
+            try:
+                robot_status = self.controller.get_robot_status()
+                occupied_slots = len(self.controller.get_occupied_slots())
+                
+                status_text = f"Robot: {'Connected' if robot_status.get('initialized', False) else 'Disconnected'} | "
+                status_text += f"Occupied Slots: {occupied_slots} | "
+                status_text += f"Lights: {'On' if robot_status.get('lights_on', False) else 'Off'}"
+                
+                self.status_bar.showMessage(status_text)
+            except AttributeError as e:
+                # Controller methods might not be ready yet
+                self.status_bar.showMessage("Loading components...")
+            except Exception as e:
+                self.status_bar.showMessage(f"Status update error: {str(e)}")
         except Exception as e:
-            self.status_bar.showMessage(f"Status update error: {str(e)}")
+            # Catch-all for any unexpected errors
+            self.status_bar.showMessage(f"System error: {str(e)}")
     
     def new_configuration(self):
         """Create a new configuration."""

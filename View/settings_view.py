@@ -5,7 +5,7 @@ Settings view for the microtissue manipulator GUI.
 import sys
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, 
                            QPushButton, QLabel, QGroupBox, QProgressBar,
-                           QDoubleSpinBox, QLineEdit, QComboBox, QTextEdit, QScrollArea, QListWidget, QListWidgetItem)
+                           QDoubleSpinBox, QLineEdit, QComboBox, QTextEdit, QScrollArea, QCheckBox)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 
@@ -107,42 +107,44 @@ class SettingsView(QWidget):
         group = QGroupBox("Configuration")
         layout = QGridLayout()
 
-        # Slot selection list (expanded size)
-        layout.addWidget(QLabel("Select Slots:"), 0, 0, 1, 2)
-        self.slot_list_widget = QListWidget()
-        self.slot_list_widget.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-        self.slot_list_widget.setMinimumHeight(120)  # Make the slot list taller
-        self.slot_list_widget.setMinimumWidth(120)   # Make the slot list wider
+        # Slot selection checkboxes
+        layout.addWidget(QLabel("Select Slots:"), 0, 0, 1, 4)
+        
+        # Create checkboxes for slots 1-12 in a 3x4 grid
+        self.slot_checkboxes = {}
         for i in range(1, 13):
-            self.slot_list_widget.addItem(QListWidgetItem(str(i)))
-        layout.addWidget(self.slot_list_widget, 1, 0, 1, 2)
+            row = 1 + (i - 1) // 4  # Rows 1, 2, 3
+            col = (i - 1) % 4       # Columns 0, 1, 2, 3
+            checkbox = QCheckBox(f"Slot {i}")
+            self.slot_checkboxes[i] = checkbox
+            layout.addWidget(checkbox, row, col)
 
         # X, Y, Z spinboxes moved down and spaced out
-        layout.addWidget(QLabel("X:"), 2, 0)
+        layout.addWidget(QLabel("X:"), 4, 0)
         self.offset_x_spinbox = QDoubleSpinBox()
         self.offset_x_spinbox.setMinimum(-1000.0)
         self.offset_x_spinbox.setMaximum(1000.0)
         self.offset_x_spinbox.setDecimals(2)
-        layout.addWidget(self.offset_x_spinbox, 2, 1)
+        layout.addWidget(self.offset_x_spinbox, 4, 1)
 
-        layout.addWidget(QLabel("Y:"), 3, 0)
+        layout.addWidget(QLabel("Y:"), 5, 0)
         self.offset_y_spinbox = QDoubleSpinBox()
         self.offset_y_spinbox.setMinimum(-1000.0)
         self.offset_y_spinbox.setMaximum(1000.0)
         self.offset_y_spinbox.setDecimals(2)
-        layout.addWidget(self.offset_y_spinbox, 3, 1)
+        layout.addWidget(self.offset_y_spinbox, 5, 1)
 
-        layout.addWidget(QLabel("Z:"), 4, 0)
+        layout.addWidget(QLabel("Z:"), 6, 0)
         self.offset_z_spinbox = QDoubleSpinBox()
         self.offset_z_spinbox.setMinimum(-1000.0)
         self.offset_z_spinbox.setMaximum(1000.0)
         self.offset_z_spinbox.setDecimals(2)
-        layout.addWidget(self.offset_z_spinbox, 4, 1)
+        layout.addWidget(self.offset_z_spinbox, 6, 1)
 
         # Add Slot Offsets Button
         self.add_offsets_btn = QPushButton("Add Slot Offsets")
         self.add_offsets_btn.clicked.connect(self.on_add_slot_offsets)
-        layout.addWidget(self.add_offsets_btn, 5, 0, 1, 2)
+        layout.addWidget(self.add_offsets_btn, 7, 0, 1, 2)
 
         group.setLayout(layout)
         return group
@@ -251,9 +253,8 @@ class SettingsView(QWidget):
         x = self.offset_x_spinbox.value()
         y = self.offset_y_spinbox.value()
         z = self.offset_z_spinbox.value()
-        # Get selected slots as a list of ints
-        selected_items = self.slot_list_widget.selectedItems()
-        slots = [int(item.text()) for item in selected_items]
+        # Get selected slots from checkboxes
+        slots = [slot_num for slot_num, checkbox in self.slot_checkboxes.items() if checkbox.isChecked()]
         if not slots:
             return
 

@@ -14,6 +14,14 @@ class ManualMovementModel:
         self.possible_steps = [0.01, 0.1, 0.5, 1, 3, 5, 10, 30, 50]
         self.step = 1
         self.hotkeys = []
+        
+        # Pipetting parameters for "in place" operations
+        self.aspirate_volume = 25
+        self.aspirate_flow_rate = 25
+        self.dispense_volume = 25
+        self.dispense_flow_rate = 25
+        self.dispense_pushout = 0
+        self.blow_out_flow_rate = 25
 
     def run_in_thread(self, fn, *args, on_result=None, on_error=None, on_finished=None, **kwargs):
         """Run a function in a separate thread using Worker."""
@@ -67,11 +75,15 @@ class ManualMovementModel:
             self.hotkeys.append(keyboard.add_hotkey('+', lambda: self.run_in_thread(self.increase_step)))
             self.hotkeys.append(keyboard.add_hotkey('-', lambda: self.run_in_thread(self.decrease_step)))
             self.hotkeys.append(keyboard.add_hotkey('s', lambda: self.run_in_thread(self.save_position)))
+            self.hotkeys.append(keyboard.add_hotkey('a', lambda: self.run_in_thread(self.aspirate_in_place_action)))
+            self.hotkeys.append(keyboard.add_hotkey('d', lambda: self.run_in_thread(self.dispense_in_place_action)))
+            self.hotkeys.append(keyboard.add_hotkey('b', lambda: self.run_in_thread(self.blow_out_in_place_action)))
             
             self.keyboard_active = True
             print("Keyboard movement activated")
             print(f"Current step size: {self.step}mm")
             print("Controls: Arrow keys (XY), Page Up/Down (Z), +/- (step size), S (save position)")
+            print("Pipetting: A (aspirate in place), D (dispense in place), B (blow out in place)")
             return True
             
         except Exception as e:
@@ -344,3 +356,121 @@ class ManualMovementModel:
         except Exception as e:
             print(f"Error retracting axis {axis}: {e}")
             return False
+
+    # Pipetting methods
+    def aspirate(self, labware_id: str, well_name: str, well_location: str = 'top', 
+                 offset: tuple = (0,0,0), volume_offset: int = 0, volume: int = 25, 
+                 flow_rate: int = 25) -> bool:
+        """Aspirate from a specific well."""
+        try:
+            if not globals.robot_initialized:
+                print("Robot not initialized. Please initialize first.")
+                return False
+            globals.robot_api.aspirate(labware_id, well_name, well_location, offset, 
+                                     volume_offset, volume, flow_rate)
+            print(f"Aspirated {volume}uL from {well_name} at {flow_rate}uL/s")
+            return True
+        except Exception as e:
+            print(f"Error aspirating: {e}")
+            return False
+
+    def dispense(self, labware_id: str, well_name: str, well_location: str = 'top',
+                 offset: tuple = (0,0,0), volume_offset: int = 0, volume: int = 25,
+                 flow_rate: int = 25, pushout: int = 0) -> bool:
+        """Dispense to a specific well."""
+        try:
+            if not globals.robot_initialized:
+                print("Robot not initialized. Please initialize first.")
+                return False
+            globals.robot_api.dispense(labware_id, well_name, well_location, offset,
+                                     volume_offset, volume, flow_rate, pushout)
+            print(f"Dispensed {volume}uL to {well_name} at {flow_rate}uL/s")
+            return True
+        except Exception as e:
+            print(f"Error dispensing: {e}")
+            return False
+
+    def blow_out(self, labware_id: str, well_name: str, well_location: str = 'top',
+                 flow_rate: int = 25) -> bool:
+        """Blow out to a specific well."""
+        try:
+            if not globals.robot_initialized:
+                print("Robot not initialized. Please initialize first.")
+                return False
+            globals.robot_api.blow_out(labware_id, well_name, well_location, flow_rate)
+            print(f"Blew out to {well_name} at {flow_rate}uL/s")
+            return True
+        except Exception as e:
+            print(f"Error blowing out: {e}")
+            return False
+
+    def aspirate_in_place_action(self) -> bool:
+        """Aspirate in place using stored parameters."""
+        try:
+            if not globals.robot_initialized:
+                print("Robot not initialized. Please initialize first.")
+                return False
+            globals.robot_api.aspirate_in_place(self.aspirate_volume, self.aspirate_flow_rate)
+            print(f"Aspirated {self.aspirate_volume}uL in place at {self.aspirate_flow_rate}uL/s")
+            return True
+        except Exception as e:
+            print(f"Error aspirating in place: {e}")
+            return False
+
+    def dispense_in_place_action(self) -> bool:
+        """Dispense in place using stored parameters."""
+        try:
+            if not globals.robot_initialized:
+                print("Robot not initialized. Please initialize first.")
+                return False
+            globals.robot_api.dispense_in_place(self.dispense_volume, self.dispense_flow_rate, 
+                                               self.dispense_pushout)
+            print(f"Dispensed {self.dispense_volume}uL in place at {self.dispense_flow_rate}uL/s")
+            return True
+        except Exception as e:
+            print(f"Error dispensing in place: {e}")
+            return False
+
+    def blow_out_in_place_action(self) -> bool:
+        """Blow out in place using stored parameters."""
+        try:
+            if not globals.robot_initialized:
+                print("Robot not initialized. Please initialize first.")
+                return False
+            globals.robot_api.blow_out_in_place(self.blow_out_flow_rate)
+            print(f"Blew out in place at {self.blow_out_flow_rate}uL/s")
+            return True
+        except Exception as e:
+            print(f"Error blowing out in place: {e}")
+            return False
+
+    # Parameter setters for in-place operations
+    def set_aspirate_params(self, volume: int, flow_rate: int):
+        """Set parameters for aspirate in place."""
+        self.aspirate_volume = volume
+        self.aspirate_flow_rate = flow_rate
+        print(f"Aspirate parameters set: {volume}uL at {flow_rate}uL/s")
+
+    def set_dispense_params(self, volume: int, flow_rate: int, pushout: int = 0):
+        """Set parameters for dispense in place."""
+        self.dispense_volume = volume
+        self.dispense_flow_rate = flow_rate
+        self.dispense_pushout = pushout
+        print(f"Dispense parameters set: {volume}uL at {flow_rate}uL/s, pushout: {pushout}uL")
+
+    def set_blow_out_params(self, flow_rate: int):
+        """Set parameters for blow out in place."""
+        self.blow_out_flow_rate = flow_rate
+        print(f"Blow out flow rate set: {flow_rate}uL/s")
+
+    def get_aspirate_params(self):
+        """Get current aspirate parameters."""
+        return self.aspirate_volume, self.aspirate_flow_rate
+
+    def get_dispense_params(self):
+        """Get current dispense parameters."""
+        return self.dispense_volume, self.dispense_flow_rate, self.dispense_pushout
+
+    def get_blow_out_params(self):
+        """Get current blow out parameters."""
+        return self.blow_out_flow_rate
