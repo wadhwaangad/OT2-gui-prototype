@@ -13,6 +13,7 @@ import json
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from paths import CAM_CONFIGS_DIR
 from Model.manual_movement import ManualMovementModel
+import Model.globals as globals
 
 
 class MainController:
@@ -26,7 +27,7 @@ class MainController:
         self.manual_movement_model = ManualMovementModel()
         
         # Active camera captures
-        self.active_cameras: Dict[str, MultiprocessVideoCapture] = {}
+        
         
         # View references (will be set by the main view)
         self.main_view = None
@@ -86,7 +87,7 @@ class MainController:
     def start_camera_capture(self, camera_name: str, camera_index: int, width: int = None, height: int = None, focus: int = None) -> bool:
         """Start capturing from a specific camera, using default resolution if available."""
         try:
-            if camera_name in self.active_cameras:
+            if camera_name in globals.active_cameras:
                 self.stop_camera_capture(camera_name)
 
             # Try to use default resolution if not provided
@@ -126,7 +127,7 @@ class MainController:
                 height = 480
 
             capture = MultiprocessVideoCapture(camera_index, width, height, focus=focus)
-            self.active_cameras[camera_name] = capture
+            globals.active_cameras[camera_name] = capture
             return True
         except Exception as e:
             print(f"Error starting camera capture: {e}")
@@ -135,9 +136,9 @@ class MainController:
     def stop_camera_capture(self, camera_name: str) -> bool:
         """Stop capturing from a specific camera."""
         try:
-            if camera_name in self.active_cameras:
-                self.active_cameras[camera_name].release()
-                del self.active_cameras[camera_name]
+            if camera_name in globals.active_cameras:
+                globals.active_cameras[camera_name].release()
+                del globals.active_cameras[camera_name]
             return True
         except Exception as e:
             print(f"Error stopping camera capture: {e}")
@@ -145,15 +146,15 @@ class MainController:
     
     def get_camera_frame(self, camera_name: str):
         """Get the latest frame from a specific camera."""
-        if camera_name in self.active_cameras:
-            return self.active_cameras[camera_name].read()
+        if camera_name in globals.active_cameras:
+            return globals.active_cameras[camera_name].read()
         return False, None
     
     def set_camera_focus(self, camera_name: str, focus_value: int) -> bool:
         """Set focus for a specific camera."""
         try:
-            if camera_name in self.active_cameras:
-                self.active_cameras[camera_name].set_focus(focus_value)
+            if camera_name in globals.active_cameras:
+                globals.active_cameras[camera_name].set_focus(focus_value)
                 return True
             return False
         except Exception as e:
@@ -162,7 +163,7 @@ class MainController:
     
     def is_camera_active(self, camera_name: str) -> bool:
         """Check if a camera is actively capturing."""
-        return camera_name in self.active_cameras
+        return camera_name in globals.active_cameras
     
     # Settings control methods
     def initialize_robot(self, on_result=None, on_error=None, on_finished=None):
@@ -425,7 +426,7 @@ class MainController:
     def cleanup(self):
         """Cleanup resources when closing application."""
         # Stop all active cameras
-        for camera_name in list(self.active_cameras.keys()):
+        for camera_name in list(globals.active_cameras.keys()):
             self.stop_camera_capture(camera_name)
 
         self.labware_model.save_labware_config()

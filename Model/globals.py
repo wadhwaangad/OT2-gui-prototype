@@ -1,7 +1,11 @@
+from typing import Dict
+from Model.camera import MultiprocessVideoCapture
+from typing import Dict
 robot_api=None
 robot_initialized=False
 get_run_info=False
 # Labware-related global variables
+active_cameras: Dict[str, MultiprocessVideoCapture] = {}
 custom_labware = False
 protocol_labware = []
 current_run_info = {}

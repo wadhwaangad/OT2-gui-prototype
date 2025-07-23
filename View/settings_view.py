@@ -8,8 +8,8 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                            QDoubleSpinBox, QLineEdit, QComboBox, QTextEdit, QScrollArea, QCheckBox)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
-
-
+from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QSpinBox
+from View.zoomable_video_widget import VideoDisplayWidget
 class SettingsView(QWidget):
     """Settings view widget for robot control and configuration."""
     
@@ -87,8 +87,8 @@ class SettingsView(QWidget):
         layout.addWidget(self.load_pipette_btn, 2, 0)
         
         # Placeholder buttons
-        self.placeholder_btn_1 = QPushButton("Placeholder 1")
-        self.placeholder_btn_1.clicked.connect(self.on_placeholder_1)
+        self.placeholder_btn_1 = QPushButton("Calibrate Camera")
+        self.placeholder_btn_1.clicked.connect(self.on_calibrate_camera)
         layout.addWidget(self.placeholder_btn_1, 2, 1)
         
         self.placeholder_btn_2 = QPushButton("Placeholder 2")
@@ -262,12 +262,35 @@ class SettingsView(QWidget):
             pass
         self.controller.add_slot_offsets(slots, x, y, z, on_result=on_result, on_error=None, on_finished=lambda: None)
     
-    def on_placeholder_1(self):
-        """Handle placeholder 1 button click."""
-        def on_result(success):
-            pass
-        self.controller.placeholder_function_1(on_result=on_result, on_finished=lambda: None)
-    
+    def on_calibrate_camera(self):
+        """Handle camera calibration button click."""
+        cameras = self.controller.get_available_cameras()
+        
+        # Look for overview camera first
+        overview_camera = None
+        for camera_data in cameras:
+            user_label, camera_index, cam_name, default_res = camera_data
+            if "overview_cam" in user_label.lower():
+                overview_camera = (cam_name, camera_index, user_label)
+                break
+        
+        if overview_camera:
+            # Open camera test window for overview camera
+            cam_name, camera_index, user_label = overview_camera
+            self.open_camera_test_window(cam_name, camera_index, user_label)
+        else:
+            # No overview camera found, run general calibration
+            def on_result(success):
+                if success:
+                    print("Camera calibration completed successfully")
+                else:
+                    print("Camera calibration failed")
+            
+            def on_error(error_msg):
+                print(f"Camera calibration error: {error_msg}")
+            
+            self.controller.calibrate_camera(on_result=on_result, on_error=on_error, on_finished=lambda: None)
+
     def on_placeholder_2(self):
         """Handle placeholder 2 button click."""
         def on_result(success):
@@ -279,3 +302,181 @@ class SettingsView(QWidget):
         def on_result(success):
             pass
         self.controller.placeholder_function_3(on_result=on_result, on_finished=lambda: None)
+
+    def open_camera_test_window(self, camera_name, camera_index):
+        """Open a separate window for camera testing."""
+        self.camera_test_window = CameraTestWindow(camera_name, camera_index, self.controller)
+        self.camera_test_window.show()
+
+
+
+class CameraTestWindow(QDialog):
+    """Separate window for testing individual cameras."""
+
+    def __init__(self, camera_name: str, camera_index: int, user_label: str, controller, parent=None):
+        super().__init__(parent)
+        self.camera_name = camera_name
+        self.user_label = user_label
+        self.camera_index = camera_index
+        self.controller = controller
+        self.is_capturing = False
+        
+        self.setWindowTitle(f"Camera Calibration - {self.user_label}")
+        self.setMinimumSize(800, 600)
+        
+        self.setup_ui()
+        self.setup_timer()
+        
+        # Start camera capture
+        self.start_capture()
+    
+    def setup_ui(self):
+        """Setup the user interface."""
+        import os, json
+        layout = QVBoxLayout()
+
+        # Camera info
+        info_layout = QHBoxLayout()
+        info_layout.addWidget(QLabel(f"Camera: {self.user_label}"))
+        info_layout.addWidget(QLabel(f"Index: {self.camera_index}"))
+        info_layout.addStretch()
+
+        # Camera controls
+        controls_group = QGroupBox("Camera Controls")
+        controls_layout = QHBoxLayout()
+
+        # Resolution selection
+        res_layout = QVBoxLayout()
+        res_layout.addWidget(QLabel("Resolution:"))
+        res_input_layout = QHBoxLayout()
+        self.res_combo = QComboBox()
+        self.custom_width = None
+        self.custom_height = None
+        config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cam_configs")
+        config_file = os.path.join(config_dir, f"{self.user_label}.json")
+        resolutions = []
+        default_res = (640, 480)
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, "r") as f:
+                    config = json.load(f)
+                resolutions = config.get("resolutions", [])
+                default_res = tuple(config.get("default_resolution", [640, 480]))
+            except Exception:
+                resolutions = []
+                default_res = (640, 480)
+        if resolutions:
+            for w, h in resolutions:
+                self.res_combo.addItem(f"{w} x {h}", (w, h))
+            # Set to default resolution if present
+            default_index = 0
+            for i in range(self.res_combo.count()):
+                if self.res_combo.itemData(i) == default_res:
+                    default_index = i
+                    break
+            self.res_combo.setCurrentIndex(default_index)
+            res_input_layout.addWidget(self.res_combo)
+        else:
+            self.custom_width = QSpinBox()
+            self.custom_width.setRange(1, 10000)
+            self.custom_width.setValue(default_res[0])
+            self.custom_width.setPrefix("W: ")
+            self.custom_height = QSpinBox()
+            self.custom_height.setRange(1, 10000)
+            self.custom_height.setValue(default_res[1])
+            self.custom_height.setPrefix("H: ")
+            res_input_layout.addWidget(self.custom_width)
+            res_input_layout.addWidget(self.custom_height)
+        res_layout.addLayout(res_input_layout)
+
+        # Control buttons
+        button_layout = QVBoxLayout()
+        self.reset_view_btn = QPushButton("Reset View")
+        self.reset_view_btn.clicked.connect(self.reset_view)
+        button_layout.addWidget(self.reset_view_btn)
+
+        self.capture_btn = QPushButton("Stop Capture")
+        self.capture_btn.clicked.connect(self.toggle_capture)
+        button_layout.addWidget(self.capture_btn)
+
+        controls_layout.addLayout(res_layout)
+        controls_layout.addLayout(button_layout)
+        controls_layout.addStretch()
+        controls_group.setLayout(controls_layout)
+
+        # Video display
+        self.video_display = VideoDisplayWidget()
+
+        # Button box
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        button_box.rejected.connect(self.close)
+
+        # Add to main layout
+        layout.addLayout(info_layout)
+        layout.addWidget(controls_group)
+        layout.addWidget(self.video_display)
+        layout.addWidget(button_box)
+
+        self.setLayout(layout)
+
+    def get_selected_resolution(self):
+        if self.res_combo and self.res_combo.count() > 0:
+            return self.res_combo.currentData()
+        elif self.custom_width and self.custom_height:
+            return (self.custom_width.value(), self.custom_height.value())
+        return (640, 480)
+    
+    def setup_timer(self):
+        """Setup timer for video updates."""
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_frame)
+        self.timer.start(33)  # ~30 FPS
+    
+    def start_capture(self):
+        """Start camera capture."""
+        width, height = self.get_selected_resolution()
+        success = self.controller.start_camera_capture(
+            self.camera_name,
+            self.camera_index,
+            width=width,
+            height=height,
+            focus=900
+        )
+        if success:
+            self.is_capturing = True
+            self.capture_btn.setText("Stop Capture")
+        else:
+            pass  # Backend handles error messaging
+    
+    def stop_capture(self):
+        """Stop camera capture."""
+        self.controller.stop_camera_capture(self.camera_name)
+        self.is_capturing = False
+        self.capture_btn.setText("Start Capture")
+        self.video_display.clear_frame()
+    
+    def toggle_capture(self):
+        """Toggle camera capture."""
+        if self.is_capturing:
+            self.stop_capture()
+        else:
+            self.start_capture()
+    
+    def update_frame(self):
+        """Update the video frame."""
+        if self.is_capturing:
+            ret, frame = self.controller.get_camera_frame(self.camera_name)
+            if ret and frame is not None:
+                self.video_display.set_frame(frame)
+    
+    
+    def reset_view(self):
+        """Reset the video view."""
+        self.video_display.reset_view()
+    
+    def closeEvent(self, event):
+        """Handle close event."""
+        self.timer.stop()
+        if self.is_capturing:
+            self.stop_capture()
+        event.accept()
