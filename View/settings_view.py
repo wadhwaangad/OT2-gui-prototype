@@ -439,8 +439,7 @@ class CameraTestWindow(QDialog):
             self.camera_name,
             self.camera_index,
             width=width,
-            height=height,
-            focus=900
+            height=height
         )
         if success:
             self.is_capturing = True
