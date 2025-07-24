@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QPushButton, 
                            QLabel, QGroupBox, QLineEdit, QFormLayout, QDoubleSpinBox, QComboBox, 
-                           QSpinBox, QTextEdit, QScrollArea)
+                           QSpinBox, QTextEdit, QScrollArea, QCheckBox)
 from PyQt6.QtCore import Qt
 
 class ManualMovementView(QWidget):
@@ -208,7 +208,7 @@ class ManualMovementView(QWidget):
         operation_selection_row.setSpacing(5)  # Reduce spacing
         operation_selection_row.addWidget(QLabel("Select Operation:"))
         self.operation_combo = QComboBox()
-        self.operation_combo.addItems(["Aspirate", "Dispense", "Blow Out"])
+        self.operation_combo.addItems(["Aspirate", "Dispense", "Blow Out", "Move to Well"])
         self.operation_combo.currentTextChanged.connect(self.on_operation_changed)
         self.operation_combo.setMaximumWidth(120)  # Limit width
         operation_selection_row.addWidget(self.operation_combo)
@@ -511,6 +511,16 @@ class ManualMovementView(QWidget):
             except TypeError:
                 pass  # No connections to disconnect
             self.action_btn.clicked.connect(self.on_blow_out)
+            
+        elif operation == "Move to Well":
+            self.setup_move_to_well_inputs()
+            self.offset_row_widget.setVisible(True)
+            self.action_btn.setText("Move to Well")
+            try:
+                self.action_btn.clicked.disconnect()
+            except TypeError:
+                pass  # No connections to disconnect
+            self.action_btn.clicked.connect(self.on_move_to_well)
     
     def setup_aspirate_inputs(self):
         """Setup inputs for aspirate operation."""
@@ -573,6 +583,34 @@ class ManualMovementView(QWidget):
         self.flow_rate_input.setMaximumWidth(80)  # Limit width
         self.params_row.addWidget(QLabel("Flow Rate:"))
         self.params_row.addWidget(self.flow_rate_input)
+        self.params_row.addStretch()  # Add stretch to prevent over-expansion
+
+    def setup_move_to_well_inputs(self):
+        """Setup inputs for move to well operation."""
+        # Force direct checkbox
+        self.force_direct_checkbox = QCheckBox("Force Direct")
+        self.force_direct_checkbox.setChecked(False)
+        self.params_row.addWidget(self.force_direct_checkbox)
+        
+        # Speed input (optional)
+        self.speed_input = QSpinBox()
+        self.speed_input.setRange(1, 1000)
+        self.speed_input.setValue(100)
+        self.speed_input.setSuffix(" mm/s")
+        self.speed_input.setMaximumWidth(80)
+        self.params_row.addWidget(QLabel("Speed:"))
+        self.params_row.addWidget(self.speed_input)
+        
+        # Min Z height input (optional)
+        self.min_z_height_input = QDoubleSpinBox()
+        self.min_z_height_input.setRange(0, 300)
+        self.min_z_height_input.setValue(20.0)
+        self.min_z_height_input.setDecimals(1)
+        self.min_z_height_input.setSuffix(" mm")
+        self.min_z_height_input.setMaximumWidth(80)
+        self.params_row.addWidget(QLabel("Min Z:"))
+        self.params_row.addWidget(self.min_z_height_input)
+        
         self.params_row.addStretch()  # Add stretch to prevent over-expansion
 
     def on_move_robot(self):
@@ -727,3 +765,44 @@ class ManualMovementView(QWidget):
         success = self.controller.blow_out(labware_id, well_name, well_location, flow_rate)
         if not success:
             print(f"Failed to blow out to {well_name} in slot {slot_number}")
+
+    def on_move_to_well(self):
+        """Handle move to well button action."""
+        slot_number = self.slot_input.value()
+        well_name = self.well_name_input.text().strip()
+        well_location = self.well_location_combo.currentText()
+        
+        if not well_name:
+            print("Please enter a well name for move to well operation")
+            return
+        
+        # Get labware ID from slot number
+        try:
+            import Model.globals as globals
+            if not globals.robot_api or not hasattr(globals.robot_api, 'labware_dct'):
+                print("Robot API not initialized or labware dictionary not available")
+                return
+            
+            labware_id = globals.robot_api.labware_dct.get(str(slot_number))
+            if not labware_id:
+                print(f"No labware found in slot {slot_number}. Please load labware first.")
+                return
+        except Exception as e:
+            print(f"Error getting labware ID for slot {slot_number}: {e}")
+            return
+        
+        offset = (
+            self.x_offset_input.value(),
+            self.y_offset_input.value(),
+            self.z_offset_input.value()
+        )
+        volume_offset = self.volume_offset_input.value()
+        force_direct = self.force_direct_checkbox.isChecked()
+        speed = self.speed_input.value()
+        min_z_height = self.min_z_height_input.value()
+        
+        print(f"Moving to slot {slot_number} (labware: {labware_id}), well {well_name}")
+        success = self.controller.move_to_well(labware_id, well_name, well_location, 
+                                             offset, volume_offset, force_direct, speed, min_z_height)
+        if not success:
+            print(f"Failed to move to {well_name} in slot {slot_number}")

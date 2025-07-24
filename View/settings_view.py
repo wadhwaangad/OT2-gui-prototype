@@ -3,6 +3,9 @@ Settings view for the microtissue manipulator GUI.
 """
 
 import sys
+import os
+import json
+import cv2
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, 
                            QPushButton, QLabel, QGroupBox, QProgressBar,
                            QDoubleSpinBox, QLineEdit, QComboBox, QTextEdit, QScrollArea, QCheckBox)
@@ -279,17 +282,14 @@ class SettingsView(QWidget):
             cam_name, camera_index, user_label = overview_camera
             self.open_camera_test_window(cam_name, camera_index, user_label)
         else:
-            # No overview camera found, run general calibration
-            def on_result(success):
-                if success:
-                    print("Camera calibration completed successfully")
-                else:
-                    print("Camera calibration failed")
-            
-            def on_error(error_msg):
-                print(f"Camera calibration error: {error_msg}")
-            
-            self.controller.calibrate_camera(on_result=on_result, on_error=on_error, on_finished=lambda: None)
+            # No overview camera found, show available cameras for selection
+            if cameras:
+                # Use the first available camera for calibration
+                user_label, camera_index, cam_name, default_res = cameras[1]
+                print(f"No overview camera found. Using first available camera: {user_label}")
+                self.open_camera_test_window(cam_name, camera_index, user_label)
+            else:
+                print("No cameras available for calibration")
 
     def on_placeholder_2(self):
         """Handle placeholder 2 button click."""
@@ -303,9 +303,9 @@ class SettingsView(QWidget):
             pass
         self.controller.placeholder_function_3(on_result=on_result, on_finished=lambda: None)
 
-    def open_camera_test_window(self, camera_name, camera_index):
+    def open_camera_test_window(self, camera_name, camera_index, user_label):
         """Open a separate window for camera testing."""
-        self.camera_test_window = CameraTestWindow(camera_name, camera_index, self.controller)
+        self.camera_test_window = CameraTestWindow(camera_name, camera_index, user_label, self.controller)
         self.camera_test_window.show()
 
 
@@ -332,7 +332,6 @@ class CameraTestWindow(QDialog):
     
     def setup_ui(self):
         """Setup the user interface."""
-        import os, json
         layout = QVBoxLayout()
 
         # Camera info
@@ -341,53 +340,21 @@ class CameraTestWindow(QDialog):
         info_layout.addWidget(QLabel(f"Index: {self.camera_index}"))
         info_layout.addStretch()
 
-        # Camera controls
-        controls_group = QGroupBox("Camera Controls")
-        controls_layout = QHBoxLayout()
-
-        # Resolution selection
-        res_layout = QVBoxLayout()
-        res_layout.addWidget(QLabel("Resolution:"))
-        res_input_layout = QHBoxLayout()
-        self.res_combo = QComboBox()
-        self.custom_width = None
-        self.custom_height = None
+        # Set default resolution from config
         config_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cam_configs")
         config_file = os.path.join(config_dir, f"{self.user_label}.json")
-        resolutions = []
-        default_res = (640, 480)
+        self.default_res = (640, 480)  # fallback default
         if os.path.exists(config_file):
             try:
                 with open(config_file, "r") as f:
                     config = json.load(f)
-                resolutions = config.get("resolutions", [])
-                default_res = tuple(config.get("default_resolution", [640, 480]))
+                self.default_res = tuple(config.get("default_resolution", [640, 480]))
             except Exception:
-                resolutions = []
-                default_res = (640, 480)
-        if resolutions:
-            for w, h in resolutions:
-                self.res_combo.addItem(f"{w} x {h}", (w, h))
-            # Set to default resolution if present
-            default_index = 0
-            for i in range(self.res_combo.count()):
-                if self.res_combo.itemData(i) == default_res:
-                    default_index = i
-                    break
-            self.res_combo.setCurrentIndex(default_index)
-            res_input_layout.addWidget(self.res_combo)
-        else:
-            self.custom_width = QSpinBox()
-            self.custom_width.setRange(1, 10000)
-            self.custom_width.setValue(default_res[0])
-            self.custom_width.setPrefix("W: ")
-            self.custom_height = QSpinBox()
-            self.custom_height.setRange(1, 10000)
-            self.custom_height.setValue(default_res[1])
-            self.custom_height.setPrefix("H: ")
-            res_input_layout.addWidget(self.custom_width)
-            res_input_layout.addWidget(self.custom_height)
-        res_layout.addLayout(res_input_layout)
+                self.default_res = (640, 480)
+
+        # Camera controls
+        controls_group = QGroupBox("Camera Controls")
+        controls_layout = QHBoxLayout()
 
         # Control buttons
         button_layout = QVBoxLayout()
@@ -399,7 +366,6 @@ class CameraTestWindow(QDialog):
         self.capture_btn.clicked.connect(self.toggle_capture)
         button_layout.addWidget(self.capture_btn)
 
-        controls_layout.addLayout(res_layout)
         controls_layout.addLayout(button_layout)
         controls_layout.addStretch()
         controls_group.setLayout(controls_layout)
@@ -420,11 +386,8 @@ class CameraTestWindow(QDialog):
         self.setLayout(layout)
 
     def get_selected_resolution(self):
-        if self.res_combo and self.res_combo.count() > 0:
-            return self.res_combo.currentData()
-        elif self.custom_width and self.custom_height:
-            return (self.custom_width.value(), self.custom_height.value())
-        return (640, 480)
+        """Return the default resolution."""
+        return self.default_res
     
     def setup_timer(self):
         """Setup timer for video updates."""
@@ -466,7 +429,15 @@ class CameraTestWindow(QDialog):
         if self.is_capturing:
             ret, frame = self.controller.get_camera_frame(self.camera_name)
             if ret and frame is not None:
-                self.video_display.set_frame(frame)
+                # Add center dot annotation for calibration
+                annotated_frame = frame.copy()
+                height, width = annotated_frame.shape[:2]
+                center_x, center_y = width // 2, height // 2
+                
+                # Draw a red dot in the center
+                cv2.circle(annotated_frame, (center_x, center_y), 5, (0, 0, 255), -1)
+                
+                self.video_display.set_frame(annotated_frame)
     
     
     def reset_view(self):

@@ -404,6 +404,23 @@ class ManualMovementModel:
             print(f"Error blowing out: {e}")
             return False
 
+    def move_to_well(self, labware_id: str, well_name: str, well_location: str = 'top',
+                     offset: tuple = (0,0,0), volume_offset: int = 0, 
+                     force_direct: bool = False, speed: int = None, 
+                     min_z_height: float = None) -> bool:
+        """Move to a specific well."""
+        try:
+            if not globals.robot_initialized:
+                print("Robot not initialized. Please initialize first.")
+                return False
+            globals.robot_api.move_to_well(labware_id, well_name, well_location, offset,
+                                         volume_offset, False, force_direct, speed, min_z_height)
+            print(f"Moved to {well_name} in {well_location}")
+            return True
+        except Exception as e:
+            print(f"Error moving to well: {e}")
+            return False
+
     def aspirate_in_place_action(self) -> bool:
         """Aspirate in place using stored parameters."""
         try:

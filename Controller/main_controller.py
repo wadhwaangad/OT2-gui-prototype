@@ -398,6 +398,14 @@ class MainController:
         """Blow out to a specific well."""
         return self.manual_movement_model.blow_out(labware_id, well_name, well_location, flow_rate)
 
+    def move_to_well(self, labware_id: str, well_name: str, well_location: str = 'top',
+                     offset: tuple = (0,0,0), volume_offset: int = 0, 
+                     force_direct: bool = False, speed: int = None, 
+                     min_z_height: float = None) -> bool:
+        """Move to a specific well."""
+        return self.manual_movement_model.move_to_well(labware_id, well_name, well_location, 
+                                                      offset, volume_offset, force_direct, speed, min_z_height)
+
     def set_aspirate_params(self, volume: int, flow_rate: int):
         """Set parameters for aspirate in place."""
         self.manual_movement_model.set_aspirate_params(volume, flow_rate)
