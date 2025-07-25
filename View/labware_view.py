@@ -8,8 +8,10 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
                            QSpinBox, QTextEdit, QScrollArea, QFrame, QDialog,
                            QDialogButtonBox, QFormLayout)
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QPalette, QColor
+from PyQt6.QtGui import QFont, QPalette, QColor, QPixmap
 import Model.globals as globals
+import cv2
+import numpy as np
 
 class AddCustomLabwareDialog(QDialog):
     """Dialog for adding custom labware."""
@@ -71,6 +73,84 @@ class AddCustomLabwareDialog(QDialog):
                 "columns": self.columns_spinbox.value()
             }
         }
+
+
+class FrameViewDialog(QDialog):
+    """Dialog for displaying captured camera frames."""
+    
+    def __init__(self, frame, title="Captured Frame", parent=None):
+        super().__init__(parent)
+        self.frame = frame
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Setup the user interface."""
+        layout = QVBoxLayout()
+        
+        # Convert frame to QPixmap and display
+        if self.frame is not None:
+            # Convert BGR to RGB for Qt
+            rgb_frame = cv2.cvtColor(self.frame, cv2.COLOR_BGR2RGB)
+            height, width, channel = rgb_frame.shape
+            bytes_per_line = 3 * width
+            
+            # Create QImage from numpy array
+            from PyQt6.QtGui import QImage
+            q_image = QImage(rgb_frame.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+            
+            # Scale image if too large (max 800x600)
+            max_width, max_height = 800, 600
+            if width > max_width or height > max_height:
+                q_image = q_image.scaled(max_width, max_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            
+            # Convert to pixmap and display
+            pixmap = QPixmap.fromImage(q_image)
+            
+            image_label = QLabel()
+            image_label.setPixmap(pixmap)
+            image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(image_label)
+            
+            # Add frame info
+            info_label = QLabel(f"Frame size: {width}x{height}")
+            info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(info_label)
+        else:
+            error_label = QLabel("No frame data available")
+            error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(error_label)
+        
+        # Buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+        
+        # Save button
+        save_btn = QPushButton("Save Image")
+        save_btn.clicked.connect(self.save_image)
+        button_box.addButton(save_btn, QDialogButtonBox.ButtonRole.ActionRole)
+        
+        self.setLayout(layout)
+        
+        # Set dialog size
+        if self.frame is not None:
+            self.resize(min(width + 50, 850), min(height + 100, 700))
+    
+    def save_image(self):
+        """Save the captured frame to a file."""
+        if self.frame is not None:
+            from PyQt6.QtWidgets import QFileDialog
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, 
+                "Save Calibration Frame", 
+                "calibration_frame.png", 
+                "Image Files (*.png *.jpg *.bmp)"
+            )
+            if file_path:
+                cv2.imwrite(file_path, self.frame)
+                print(f"Frame saved to: {file_path}")
 
 
 class DeckSlotWidget(QFrame):
@@ -494,7 +574,9 @@ class LabwareView(QWidget):
         """Handle calibrate tip button click."""
         def on_success(frame):
             if frame is not None:
-                # Display the frame in a simple dialog or print success message
+                # Display the frame in a separate dialog window
+                dialog = FrameViewDialog(frame, "Tip Calibration Frame", self)
+                dialog.exec()
                 print("Calibration frame captured successfully")
             else:
                 print("Failed to capture calibration frame")

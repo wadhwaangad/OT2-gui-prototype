@@ -166,7 +166,6 @@ class MainController:
         except Exception as e:
             print(f"Error setting camera focus: {e}")
             return False
-    
     def is_camera_active(self, camera_name: str) -> bool:
         """Check if a camera is actively capturing."""
         return camera_name in globals.active_cameras
@@ -204,9 +203,13 @@ class MainController:
         """Load a pipette in a thread."""
         return self.settings_model.run_in_thread(self.settings_model.load_pipette, on_result=on_result, on_error=on_error, on_finished=on_finished)
 
-    def placeholder_function_1(self, on_result=None, on_error=None, on_finished=None):
-        """Placeholder function 1 in a thread."""
-        return self.settings_model.run_in_thread(self.settings_model.placeholder_function_1, on_result=on_result, on_error=on_error, on_finished=on_finished)
+    def calibrate_camera(self, on_result=None, on_error=None, on_finished=None):
+        """Calibrate the camera in a thread."""
+        return self.settings_model.run_in_thread(self.settings_model.calibrate_camera, on_result=on_result, on_error=on_error, on_finished=on_finished)
+        #self.settings_model.calibrate_camera()
+    def get_calibration_frame(self):
+        """Get the last captured calibration frame."""
+        return globals.calibration_frame
 
     def placeholder_function_2(self, on_result=None, on_error=None, on_finished=None):
         """Placeholder function 2 in a thread."""
@@ -316,15 +319,27 @@ class MainController:
                     if not success:
                         raise Exception("Failed to start underview camera")
                 
-                # Capture frame
-                success, frame = self.get_camera_frame(camera_label)
+                # Capture frame with retry mechanism
+                import time
+                max_retries = 10
+                retry_delay = 1  # 1 second between retries
+                #TODO: FIGURE OUT CAMERA EXPOSURE
+                success = False
+                frame = None
+                time.sleep(retry_delay)
+                 
+                for attempt in range(max_retries):
+                    success, frame = self.get_camera_frame(camera_label)
+                    if success and frame is not None:
+                        break
+                    time.sleep(retry_delay)
                 
                 # Stop camera if we started it
                 if not was_active:
                     self.stop_camera_capture(camera_label)
                 
                 if not success or frame is None:
-                    raise Exception("Failed to capture frame from underview camera")
+                    raise Exception("Failed to capture frame from underview camera after multiple attempts")
                 
                 return frame
                 

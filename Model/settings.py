@@ -7,10 +7,13 @@ from concurrent.futures import thread
 import json
 import os
 from typing import Dict, Any, Optional
+import numpy as np
+import cv2
 from Model.ot2_api import OpentronsAPI 
 from PyQt6.QtCore import QThread
 from Model.worker import Worker
 import Model.globals as globals
+import Model.utils as utils
 class SettingsModel:
     """Model for handling settings and robot control operations."""
     
@@ -169,6 +172,7 @@ class SettingsModel:
             if not globals.robot_api:
                 print("Robot not initialized. Please initialize first.")
                 return False
+            globals.robot_api=OpentronsAPI()
             globals.robot_api.create_run()
             
             # Clear all labware from the list including protocol labware and slot assignments
@@ -207,15 +211,38 @@ class SettingsModel:
         except Exception as e:
             print(f"Error loading pipette: {e}")
             return False
+
     
-    
-    def placeholder_function_1(self) -> bool:
-        """Placeholder function 1."""
+    def calibrate_camera(self) -> bool:
+        """Calibrate the camera."""
+        if not globals.robot_initialized:
+            print("Robot not initialized. Please initialize first.")
+            return False
         try:
-            print("Executing placeholder function 1...")
+            calibration_data = utils.load_calibration_config("checkerboard")
+            location=calibration_data["calib_origin"]
+            globals.robot_api.retract_axis("leftZ")
+            globals.robot_api.move_to_coordinates(location,min_z_height=1, verbose=False)
+            cap=globals.active_cameras["HD USB CAMERA"]
+            ret, globals.calibration_frame = cap.read()
+            detector=MarkerDetector()
+            globals.calibration_active = True
+            while ret is True and globals.calibration_active:
+                ret, frame = cap.read() 
+                marker_corners, marker_ids = detector.detect_markers(frame) 
+                if marker_corners:
+                    for corner in marker_corners:
+                        corner = corner.reshape((4, 2))
+                        for point in corner:
+                            cv2.circle(frame, tuple(point.astype(int)), 5, (0, 255, 0), -1)
+                            center_x = int(np.mean(corner[:, 0]))
+                            center_y = int(np.mean(corner[:, 1]))
+                            cv2.circle(frame, (center_x, center_y), 5, (255, 0, 0), -1)
+                            cv2.putText(frame, f"({center_x}, {center_y})", (center_x + 10, center_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+                globals.calibration_frame = frame
             return True
         except Exception as e:
-            print(f"Error in placeholder function 1: {e}")
+            print(f"Error in calibrating camera: {e}")
             return False
     
     def placeholder_function_2(self) -> bool:
@@ -243,4 +270,45 @@ class SettingsModel:
     def get_lights_status(self) -> bool:
         """Get current lights status."""
         return self.lights_on
+    
+class MarkerDetector():
+    def __init__(self, 
+                 squaresX: int = 7, 
+                 squaresY: int = 5,
+                 squareLength: float = 0.022, 
+                 markerLength: float = 0.011,
+                 physicalSize: float = 13.83):
+        
+        self.squaresX = squaresX
+        self.squaresY = squaresY
+        self.squareLength = squareLength
+        self.markerLength = markerLength
+        self.physicalSize = physicalSize
+        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
+        self.parameters = cv2.aruco.DetectorParameters()
+        self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.parameters)
+
+
+    def detect_markers(self, frame: np.ndarray):
+        self.marker_corners, self.marker_ids, _ = self.detector.detectMarkers(frame)
+        return self.marker_corners, self.marker_ids
+
+    def calculate_size_ratios(self, marker_corners):
+        if not marker_corners or len(marker_corners) == 0:
+            return None, None
+        
+        side_lengths = []
+        if marker_corners:
+            for corner in marker_corners[0]:
+                for i in range(4):
+                    side_length = np.linalg.norm(corner[i] - corner[(i + 1) % 4])
+                    side_lengths.append(side_length)
+
+        # Calculate the average side length
+        average_side_length = np.mean(side_lengths)
+        area = cv2.contourArea(marker_corners[0])
+        self.one_d_ratio = self.physicalSize / average_side_length
+        self.size_conversion_ratio = self.physicalSize ** 2 / area
+        return self.one_d_ratio, self.size_conversion_ratio
+
     

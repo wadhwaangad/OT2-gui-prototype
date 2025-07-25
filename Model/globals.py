@@ -4,6 +4,7 @@ from typing import Dict
 robot_api=None
 robot_initialized=False
 get_run_info=False
+calibration_frame=None
 # Labware-related global variables
 active_cameras: Dict[str, MultiprocessVideoCapture] = {}
 custom_labware = False
@@ -23,3 +24,4 @@ deck_layout = {
     "slot_11": None,
     "slot_12": None
 }
+calibration_active = False
