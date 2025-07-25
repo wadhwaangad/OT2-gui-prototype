@@ -246,11 +246,22 @@ class MultiprocessVideoCapture:
         """
         Release the video capture resources.
         """
-        self.running.value = 0
-        if self.process.is_alive():
-            self.process.join(timeout=1.0)
+        try:
+            self.running.value = 0
             if self.process.is_alive():
-                self.process.terminate()
+                self.process.join(timeout=1.0)
+                if self.process.is_alive():
+                    self.process.terminate()
+                    # Give it another moment to terminate
+                    self.process.join(timeout=0.5)
+        except Exception as e:
+            print(f"Error releasing video capture: {e}")
+            # Force terminate if still alive
+            try:
+                if hasattr(self, 'process') and self.process.is_alive():
+                    self.process.terminate()
+            except Exception as term_error:
+                print(f"Error terminating process: {term_error}")
 
 def open_capture(label: str, cam_manager: CameraManagerWindows, resolution: Union[list[int, int], str] = 'default', focus: int = None) -> MultiprocessVideoCapture:
     index = cam_manager.get_camera_index_by_label(label)

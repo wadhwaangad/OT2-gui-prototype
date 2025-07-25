@@ -137,11 +137,17 @@ class MainController:
         """Stop capturing from a specific camera."""
         try:
             if camera_name in globals.active_cameras:
-                globals.active_cameras[camera_name].release()
-                del globals.active_cameras[camera_name]
+                camera = globals.active_cameras[camera_name]
+                try:
+                    camera.release()
+                except Exception as e:
+                    print(f"Error releasing camera {camera_name}: {e}")
+                finally:
+                    # Always remove from the dictionary
+                    del globals.active_cameras[camera_name]
             return True
         except Exception as e:
-            print(f"Error stopping camera capture: {e}")
+            print(f"Error stopping camera capture for {camera_name}: {e}")
             return False
     
     def get_camera_frame(self, camera_name: str):
@@ -275,6 +281,60 @@ class MainController:
             column, 
             on_result=on_result, 
             on_error=on_error, 
+            on_finished=on_finished
+        )
+        return thread is not None
+    
+    def calibrate_tip(self, on_result=None, on_error=None, on_finished=None) -> bool:
+        """Capture a frame from the underview camera for tip calibration."""
+        def calibrate_operation():
+            try:
+                # Find the underview camera
+                available_cameras = self.get_available_cameras()
+                underview_camera = None
+                
+                for camera_info in available_cameras:
+                    user_label = camera_info[0]
+                    camera_index = camera_info[1]
+                    camera_name = camera_info[2]
+                    default_res = camera_info[3] if len(camera_info) > 3 else None
+                    
+                    if "underview_cam" in user_label:
+                        underview_camera = (user_label, camera_index, camera_name, default_res)
+                        break
+                
+                if not underview_camera:
+                    raise Exception("Underview camera not found")
+                
+                camera_label, camera_index, _, default_res = underview_camera
+                
+                # Start camera if not already active
+                was_active = self.is_camera_active(camera_label)
+                if not was_active:
+                    width, height = default_res if default_res else [1280, 720]
+                    success = self.start_camera_capture(camera_label, camera_index, width, height)
+                    if not success:
+                        raise Exception("Failed to start underview camera")
+                
+                # Capture frame
+                success, frame = self.get_camera_frame(camera_label)
+                
+                # Stop camera if we started it
+                if not was_active:
+                    self.stop_camera_capture(camera_label)
+                
+                if not success or frame is None:
+                    raise Exception("Failed to capture frame from underview camera")
+                
+                return frame
+                
+            except Exception as e:
+                raise e
+        
+        thread = self.labware_model.run_in_thread(
+            calibrate_operation,
+            on_result=on_result,
+            on_error=on_error,
             on_finished=on_finished
         )
         return thread is not None
@@ -433,10 +493,21 @@ class MainController:
     # Cleanup methods
     def cleanup(self):
         """Cleanup resources when closing application."""
-        # Stop all active cameras
-        for camera_name in list(globals.active_cameras.keys()):
-            self.stop_camera_capture(camera_name)
+        try:
+            # Stop all active cameras
+            camera_names = list(globals.active_cameras.keys())
+            for camera_name in camera_names:
+                try:
+                    self.stop_camera_capture(camera_name)
+                except Exception as e:
+                    print(f"Error stopping camera {camera_name}: {e}")
 
-        self.labware_model.save_labware_config()
+            # Save labware configuration
+            try:
+                self.labware_model.save_labware_config()
+            except Exception as e:
+                print(f"Error saving labware config: {e}")
         
-        print("Application cleanup completed")
+            print("Application cleanup completed")
+        except Exception as e:
+            print(f"Error during cleanup: {e}")

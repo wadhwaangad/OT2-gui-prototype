@@ -329,6 +329,11 @@ class LabwareView(QWidget):
         self.pickup_tip_btn.setEnabled(False)
         tip_layout.addWidget(self.pickup_tip_btn)
         
+        # Calibrate tip button
+        self.calibrate_tip_btn = QPushButton("Calibrate Tip")
+        self.calibrate_tip_btn.clicked.connect(self.on_calibrate_tip)
+        tip_layout.addWidget(self.calibrate_tip_btn)
+        
         tip_group.setLayout(tip_layout)
         layout.addWidget(tip_group)
         
@@ -480,6 +485,32 @@ class LabwareView(QWidget):
             int(self.selected_slot), 
             row, 
             column,
+            on_result=on_success,
+            on_error=on_error,
+            on_finished=on_finished
+        )
+    
+    def on_calibrate_tip(self):
+        """Handle calibrate tip button click."""
+        def on_success(frame):
+            if frame is not None:
+                # Display the frame in a simple dialog or print success message
+                print("Calibration frame captured successfully")
+            else:
+                print("Failed to capture calibration frame")
+            self.calibrate_tip_btn.setEnabled(True)
+        
+        def on_error(error):
+            print(f"Error during calibration: {error}")
+            self.calibrate_tip_btn.setEnabled(True)
+        
+        def on_finished():
+            self.calibrate_tip_btn.setEnabled(True)
+        
+        # Disable button during operation
+        self.calibrate_tip_btn.setEnabled(False)
+        
+        self.controller.calibrate_tip(
             on_result=on_success,
             on_error=on_error,
             on_finished=on_finished

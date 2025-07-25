@@ -150,9 +150,17 @@ class MainWindow(QMainWindow):
     def update_status(self):
         """Update the status bar with current information."""
         try:
+            # Check if we're shutting down
+            if not hasattr(self, 'status_timer') or not self.status_timer.isActive():
+                return
+                
             # Add safety check for controller initialization
             if not hasattr(self, 'controller') or self.controller is None:
                 self.status_bar.showMessage("Initializing...")
+                return
+                
+            # Safety check for status bar existence
+            if not hasattr(self, 'status_bar') or self.status_bar is None:
                 return
                 
             # Get system status with error handling
@@ -171,8 +179,13 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 self.status_bar.showMessage(f"Status update error: {str(e)}")
         except Exception as e:
-            # Catch-all for any unexpected errors
-            self.status_bar.showMessage(f"System error: {str(e)}")
+            # Catch-all for any unexpected errors - but don't try to update status bar if it might be gone
+            try:
+                if hasattr(self, 'status_bar') and self.status_bar is not None:
+                    self.status_bar.showMessage(f"System error: {str(e)}")
+            except:
+                # If even that fails, just print to console
+                print(f"Status update error during shutdown: {str(e)}")
     
     def new_configuration(self):
         """Create a new configuration."""
@@ -229,22 +242,33 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self, event):
         """Handle application close event."""
-        # Cleanup resources
-        self.controller.cleanup()
-        
-        # Automatically delete labware_config.json if it exists
         try:
-            import os
-            config_file = "labware_config.json"
-            if os.path.exists(config_file):
-                os.remove(config_file)
-                print(f"Deleted {config_file}")
-            else:
-                print(f"{config_file} not found")
+            # Stop the status timer first to prevent further updates
+            if hasattr(self, 'status_timer'):
+                self.status_timer.stop()
+                self.status_timer.timeout.disconnect()
+            
+            # Cleanup view components that might have timers
+            try:
+                if hasattr(self, 'camera_view') and self.camera_view is not None:
+                    self.camera_view.closeEvent(event)
+            except Exception as e:
+                print(f"Error cleaning up camera view: {e}")
+                
+            try:
+                if hasattr(self, 'settings_view') and self.settings_view is not None:
+                    self.settings_view.closeEvent(event)
+            except Exception as e:
+                print(f"Error cleaning up settings view: {e}")
+            
+            # Cleanup controller resources
+            if hasattr(self, 'controller') and self.controller is not None:
+                self.controller.cleanup()
         except Exception as e:
-            print(f"Error handling labware_config.json: {e}")
-        
-        event.accept()
+            print(f"Error during application cleanup: {e}")
+        finally:
+            # Always accept the close event
+            event.accept()
 
 
 def main():
