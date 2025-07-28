@@ -26,7 +26,7 @@ class MainWindow(QMainWindow):
         self.setup_status_bar()
         
         # Connect controller to views
-        self.controller.set_views(self, self.settings_view, self.labware_view, self.camera_view)
+        self.controller.set_views(self, self.settings_view, self.labware_view, self.camera_view, self.wellplate_view)
         
         # Pass status widget to controller for universal access
         self.controller.set_status_widget(self.status_widget)
@@ -75,6 +75,11 @@ class MainWindow(QMainWindow):
         from View.manual_movement_view import ManualMovementView
         self.manual_movement_view = ManualMovementView(self.controller)
         self.tab_widget.addTab(self.manual_movement_view, "Manual Movement")
+        
+        # Wellplate Viewer tab
+        from View.wellplate_view import WellplateView
+        self.wellplate_view = WellplateView(self.controller)
+        self.tab_widget.addTab(self.wellplate_view, "Wellplate Viewer")
     
     def setup_menu(self):
         """Setup the menu bar."""

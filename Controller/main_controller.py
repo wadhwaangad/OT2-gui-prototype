@@ -35,13 +35,15 @@ class MainController:
         self.labware_view = None
         self.camera_view = None
         self.manual_movement_view = None
+        self.wellplate_view = None
     
-    def set_views(self, main_view, settings_view, labware_view, camera_view):
+    def set_views(self, main_view, settings_view, labware_view, camera_view, wellplate_view=None):
         """Set references to view components."""
         self.main_view = main_view
         self.settings_view = settings_view
         self.labware_view = labware_view
         self.camera_view = camera_view
+        self.wellplate_view = wellplate_view
         # The manual movement view is set in main.py when the tab is created
     
     def set_status_widget(self, status_widget):
@@ -236,6 +238,42 @@ class MainController:
     def get_available_labware(self) -> List[str]:
         """Get list of available labware."""
         return self.labware_model.get_available_labware()
+    
+    def get_wellplate_labware(self) -> List[str]:
+        """Get list of wellplate labware types from available labware."""
+        all_labware = self.labware_model.get_available_labware()
+        wellplates = []
+        
+        for labware in all_labware:
+            if "wellplate" in labware.lower():
+                wellplates.append(labware)
+        
+        return wellplates
+    
+    def get_wellplate_info(self, wellplate_name: str) -> Dict[str, Any]:
+        """Get information about a specific wellplate."""
+        import re
+        
+        # Extract well count from name
+        parts = wellplate_name.split('_')
+        well_count = 96  # default
+        
+        for part in parts:
+            if part.isdigit():
+                well_count = int(part)
+                break
+        
+        # If no direct number found, try regex
+        if well_count == 96:
+            numbers = re.findall(r'\d+', wellplate_name)
+            if numbers:
+                well_count = int(numbers[0])
+        
+        return {
+            "name": wellplate_name,
+            "well_count": well_count,
+            "type": "wellplate"
+        }
     
     def get_deck_layout(self) -> Dict[str, Any]:
         """Get current deck layout."""
