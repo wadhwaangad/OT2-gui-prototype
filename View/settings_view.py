@@ -290,20 +290,9 @@ class SettingsView(QWidget):
         else:
             pass 
         time.sleep(1)
+        self.controller.activate_keyboard_movement()
         self.controller.calibrate_camera()
-        # if overview_camera:
-        #     # Open camera test window for overview camera
-        #     cam_name, camera_index, user_label = overview_camera
-        #     self.open_camera_test_window(cam_name, camera_index, user_label)
-        # else:
-        #     # No overview camera found, show available cameras for selection
-        #     if cameras:
-        #         # Use the first available camera for calibration
-        #         user_label, camera_index, cam_name, default_res = cameras[1]
-        #         print(f"No overview camera found. Using first available camera: {user_label}")
-        #         self.open_camera_test_window(cam_name, camera_index, user_label)
-        #     else:
-        #         print("No cameras available for calibration")
+        
 
     def on_placeholder_2(self):
         """Handle placeholder 2 button click."""
@@ -403,4 +392,5 @@ class CameraCalibrationWindow(QDialog):
             self.update_timer.stop()
         globals.calibration_active = False
         self.controller.stop_camera_capture(self.camera_name)
+        self.controller.activate_keyboard_movement()
         event.accept()

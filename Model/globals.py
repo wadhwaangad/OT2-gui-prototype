@@ -25,3 +25,5 @@ deck_layout = {
     "slot_12": None
 }
 calibration_active = False
+robot_coords = []
+camera_coords = []

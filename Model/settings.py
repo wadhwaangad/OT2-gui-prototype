@@ -14,6 +14,7 @@ from PyQt6.QtCore import QThread
 from Model.worker import Worker
 import Model.globals as globals
 import Model.utils as utils
+from Model.manual_movement import ManualMovementModel
 class SettingsModel:
     """Model for handling settings and robot control operations."""
     
@@ -213,34 +214,106 @@ class SettingsModel:
             return False
 
     
-    def calibrate_camera(self) -> bool:
+    def calibrate_camera(self, calibration_profile) -> bool:
         """Calibrate the camera."""
         if not globals.robot_initialized:
             print("Robot not initialized. Please initialize first.")
             return False
         try:
-            calibration_data = utils.load_calibration_config("checkerboard")
+            calibration_data = utils.load_calibration_config(calibration_profile)
+            manual_movement = ManualMovementModel()
             location=calibration_data["calib_origin"]
             globals.robot_api.retract_axis("leftZ")
             globals.robot_api.move_to_coordinates(location,min_z_height=1, verbose=False)
             cap=globals.active_cameras["HD USB CAMERA"]
             ret, globals.calibration_frame = cap.read()
-            detector=MarkerDetector()
+            squaresX=7
+            squaresY=5 
+            squareLength=0.022
+            markerLength=0.011
+            aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
+            params = cv2.aruco.DetectorParameters()
+            detector = cv2.aruco.ArucoDetector(aruco_dict, params)
+            board = cv2.aruco.CharucoBoard((squaresX, squaresY), squareLength, markerLength, aruco_dict)
             globals.calibration_active = True
-            while ret is True and globals.calibration_active:
-                ret, frame = cap.read() 
-                marker_corners, marker_ids = detector.detect_markers(frame) 
+            while globals.calibration_active:
+                ret, frame = cap.read()
+   
+                x, y, z = globals.robot_api.get_position(verbose=False)[0].values()
+                (text_width, text_height), _ = cv2.getTextSize(f"Robot coords: ({x:.2f}, {y:.2f}, {z:.2f})", cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+                cv2.rectangle(frame, (10, 0), (10 + text_width, text_height + 100), (0, 0, 0), -1)
+                cv2.putText(frame, f"Robot coords: ({x:.2f}, {y:.2f}, {z:.2f})", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.putText(frame, f"Step size: {manual_movement.step} mm", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+                center_screen_x = frame.shape[1] // 2
+                center_screen_y = frame.shape[0] // 2
+                cv2.circle(frame, (center_screen_x, center_screen_y), 5, (0, 0, 255), -1)
+                cv2.putText(frame, f"Center: ({center_screen_x}, {center_screen_y})", (center_screen_x + 10, center_screen_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
+                # Calculate the center of each quarter of the screen
+                quarter_centers = [
+                (center_screen_x // 2, center_screen_y // 2),
+                (3 * center_screen_x // 2, center_screen_y // 2),
+                (center_screen_x // 2, 3 * center_screen_y // 2),
+                (3 * center_screen_x // 2, 3 * center_screen_y // 2)
+                ]
+
+                # Draw circles at the center of each quarter
+                for qx, qy in quarter_centers:
+                cv2.circle(frame, (qx, qy), 5, (0, 255, 255), -1)
+                cv2.putText(frame, f"({qx}, {qy})", (qx + 10, qy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+
+                marker_corners, marker_ids, _ = detector.detectMarkers(frame)
                 if marker_corners:
-                    for corner in marker_corners:
-                        corner = corner.reshape((4, 2))
-                        for point in corner:
-                            cv2.circle(frame, tuple(point.astype(int)), 5, (0, 255, 0), -1)
-                            center_x = int(np.mean(corner[:, 0]))
-                            center_y = int(np.mean(corner[:, 1]))
-                            cv2.circle(frame, (center_x, center_y), 5, (255, 0, 0), -1)
-                            cv2.putText(frame, f"({center_x}, {center_y})", (center_x + 10, center_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+                for corner in marker_corners:
+                corner = corner.reshape((4, 2))
+                for point in corner:
+                    cv2.circle(frame, tuple(point.astype(int)), 5, (0, 255, 0), -1)
+
+                center_x = int(np.mean(corner[:, 0]))
+                center_y = int(np.mean(corner[:, 1]))
+                cv2.circle(frame, (center_x, center_y), 5, (255, 0, 0), -1)
+                cv2.putText(frame, f"({center_x}, {center_y})", (center_x + 10, center_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+
+                # Calculate side lengths
+                side_lengths = []
+                if marker_corners:
+                for corner in marker_corners[0]:
+                for i in range(4):
+                    side_length = np.linalg.norm(corner[i] - corner[(i + 1) % 4])
+                    side_lengths.append(side_length)
+
+                # Calculate the average side length
+                average_side_length = np.mean(side_lengths)
+                area = cv2.contourArea(marker_corners[0])
+                one_d_ratio = 13.83 / average_side_length
+                size_conversion_ratio = 13.83 ** 2 / area
+                cv2.putText(frame, f"Area of marker: {area:.2f}", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                 globals.calibration_frame = frame
+                if key_pressed == ord('q'):
+                    keyboard.unhook_all()
+                    break
+                if key_pressed == ord('s'):
+                    x, y, z = globals.robot_api.get_position(verbose=False)[0].values()
+                    globals.robot_coords.append((x, y))
+                    globals.camera_coords.append((center_x, center_y))
+            calibration_data = utils.load_calibration_config(calibration_profile)
+            calibration_data['size_conversion_ratio'] = size_conversion_ratio
+            calibration_data['one_d_ratio'] = one_d_ratio
+            utils.save_calibration_config(calibration_profile, calibration_data)
+            spacing = 5  # Distance from the calib_point in mm
+            # Calculate the four coordinates
+            calibration_points = [
+                (calib_origin[0] + spacing, calib_origin[1] + spacing),  # Right
+                (calib_origin[0] + spacing, calib_origin[1] - spacing),  # Left
+                (calib_origin[0] - spacing, calib_origin[1] - spacing),  # Up
+                (calib_origin[0] - spacing, calib_origin[1] + spacing)   # Down
+            ]
+
+            robot_coords = []
+            camera_coords = []
             return True
+
         except Exception as e:
             print(f"Error in calibrating camera: {e}")
             return False
