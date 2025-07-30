@@ -83,6 +83,8 @@ class FrameViewDialog(QDialog):
         self.frame = frame
         self.setWindowTitle(title)
         self.setModal(True)
+        self.zoom_factor = 1.0
+        self.original_pixmap = None
         self.setup_ui()
     
     def setup_ui(self):
@@ -100,18 +102,45 @@ class FrameViewDialog(QDialog):
             from PyQt6.QtGui import QImage
             q_image = QImage(rgb_frame.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
             
-            # Scale image if too large (max 800x600)
-            max_width, max_height = 800, 600
-            if width > max_width or height > max_height:
-                q_image = q_image.scaled(max_width, max_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            # Store original pixmap
+            self.original_pixmap = QPixmap.fromImage(q_image)
             
-            # Convert to pixmap and display
-            pixmap = QPixmap.fromImage(q_image)
+            # Create scroll area for zooming
+            from PyQt6.QtWidgets import QScrollArea
+            scroll_area = QScrollArea()
+            scroll_area.setWidgetResizable(True)
+            scroll_area.setAlignment(Qt.AlignmentFlag.AlignCenter)
             
-            image_label = QLabel()
-            image_label.setPixmap(pixmap)
-            image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            layout.addWidget(image_label)
+            self.image_label = QLabel()
+            self.image_label.setPixmap(self.original_pixmap)
+            self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.image_label.setMinimumSize(1, 1)
+            
+            scroll_area.setWidget(self.image_label)
+            layout.addWidget(scroll_area)
+            
+            # Zoom controls
+            zoom_layout = QHBoxLayout()
+            
+            zoom_in_btn = QPushButton("Zoom In (+)")
+            zoom_in_btn.clicked.connect(self.zoom_in)
+            zoom_layout.addWidget(zoom_in_btn)
+            
+            zoom_out_btn = QPushButton("Zoom Out (-)")
+            zoom_out_btn.clicked.connect(self.zoom_out)
+            zoom_layout.addWidget(zoom_out_btn)
+            
+            zoom_reset_btn = QPushButton("Reset Zoom")
+            zoom_reset_btn.clicked.connect(self.reset_zoom)
+            zoom_layout.addWidget(zoom_reset_btn)
+            
+            zoom_layout.addStretch()
+            
+            # Zoom factor label
+            self.zoom_label = QLabel("100%")
+            zoom_layout.addWidget(self.zoom_label)
+            
+            layout.addLayout(zoom_layout)
             
             # Add frame info
             info_label = QLabel(f"Frame size: {width}x{height}")
@@ -134,9 +163,50 @@ class FrameViewDialog(QDialog):
         
         self.setLayout(layout)
         
-        # Set dialog size
-        if self.frame is not None:
-            self.resize(min(width + 50, 850), min(height + 100, 700))
+        # Set dialog size to reasonable default
+        self.resize(800, 600)
+    
+    def zoom_in(self):
+        """Zoom in the image."""
+        self.zoom_factor *= 1.25
+        self.update_image()
+    
+    def zoom_out(self):
+        """Zoom out the image."""
+        self.zoom_factor /= 1.25
+        if self.zoom_factor < 0.1:
+            self.zoom_factor = 0.1
+        self.update_image()
+    
+    def reset_zoom(self):
+        """Reset zoom to 100%."""
+        self.zoom_factor = 1.0
+        self.update_image()
+    
+    def update_image(self):
+        """Update the displayed image with current zoom factor."""
+        if self.original_pixmap and hasattr(self, 'image_label'):
+            scaled_pixmap = self.original_pixmap.scaled(
+                self.original_pixmap.size() * self.zoom_factor,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self.image_label.setPixmap(scaled_pixmap)
+            self.image_label.resize(scaled_pixmap.size())
+            
+            # Update zoom label
+            if hasattr(self, 'zoom_label'):
+                self.zoom_label.setText(f"{int(self.zoom_factor * 100)}%")
+    
+    def wheelEvent(self, event):
+        """Handle mouse wheel for zooming."""
+        if self.original_pixmap:
+            # Zoom with mouse wheel
+            if event.angleDelta().y() > 0:
+                self.zoom_in()
+            else:
+                self.zoom_out()
+        super().wheelEvent(event)
     
     def save_image(self):
         """Save the captured frame to a file."""
@@ -576,10 +646,6 @@ class LabwareView(QWidget):
             if globals.tip_calibration_frame is not None:
                 # Display the frame in a separate dialog window
                 dialog = FrameViewDialog(globals.tip_calibration_frame, "Tip Calibration Frame", self)
-                # Make the dialog zoomable
-                if hasattr(dialog, "setWindowFlag"):
-                    dialog.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint, True)
-                dialog.setWindowState(dialog.windowState() | Qt.WindowState.WindowMaximized)
                 dialog.exec()
                 print("Calibration frame captured successfully")
             else:

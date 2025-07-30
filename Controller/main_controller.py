@@ -335,12 +335,12 @@ class MainController:
         for camera_data in cameras:
             user_label, camera_index, cam_name, default_res = camera_data
             if "overview_cam" in user_label.lower():
-                overview_camera = (cam_name, camera_index, user_label)
+                overview_camera = (cam_name, camera_index, user_label, default_res)
             if "underview_cam" in user_label.lower():
-                underview_camera = (cam_name, camera_index, user_label)
+                underview_camera = (cam_name, camera_index, user_label, default_res)
         #         break
         if overview_camera:
-            cam_name, camera_index, user_label = overview_camera
+            cam_name, camera_index, user_label, default_res = overview_camera
 
             success = self.start_camera_capture(
                 cam_name,
@@ -350,7 +350,7 @@ class MainController:
             )
 
         if underview_camera:
-            cam_name, camera_index, user_label = underview_camera
+            cam_name, camera_index, user_label, default_res = underview_camera
             success = self.start_camera_capture(
                 cam_name,
                 camera_index,
