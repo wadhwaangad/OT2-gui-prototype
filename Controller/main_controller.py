@@ -14,6 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from paths import CAM_CONFIGS_DIR
 from Model.manual_movement import ManualMovementModel
 import Model.globals as globals
+import time
 
 
 class MainController:
@@ -327,65 +328,38 @@ class MainController:
         return thread is not None
     
     def calibrate_tip(self, on_result=None, on_error=None, on_finished=None) -> bool:
-        """Capture a frame from the underview camera for tip calibration."""
-        def calibrate_operation():
-            try:
-                # Find the underview camera
-                available_cameras = self.get_available_cameras()
-                underview_camera = None
-                
-                for camera_info in available_cameras:
-                    user_label = camera_info[0]
-                    camera_index = camera_info[1]
-                    camera_name = camera_info[2]
-                    default_res = camera_info[3] if len(camera_info) > 3 else None
-                    
-                    if "underview_cam" in user_label:
-                        underview_camera = (user_label, camera_index, camera_name, default_res)
-                        break
-                
-                if not underview_camera:
-                    raise Exception("Underview camera not found")
-                
-                camera_label, camera_index, _, default_res = underview_camera
-                
-                # Start camera if not already active
-                was_active = self.is_camera_active(camera_label)
-                if not was_active:
-                    width, height = default_res if default_res else [1280, 720]
-                    success = self.start_camera_capture(camera_label, camera_index, width, height)
-                    if not success:
-                        raise Exception("Failed to start underview camera")
-                
-                # Capture frame with retry mechanism
-                import time
-                max_retries = 10
-                retry_delay = 1  # 1 second between retries
-                #TODO: FIGURE OUT CAMERA EXPOSURE
-                success = False
-                frame = None
-                time.sleep(retry_delay)
-                 
-                for attempt in range(max_retries):
-                    success, frame = self.get_camera_frame(camera_label)
-                    if success and frame is not None:
-                        break
-                    time.sleep(retry_delay)
-                
-                # Stop camera if we started it
-                if not was_active:
-                    self.stop_camera_capture(camera_label)
-                
-                if not success or frame is None:
-                    raise Exception("Failed to capture frame from underview camera after multiple attempts")
-                
-                return frame
-                
-            except Exception as e:
-                raise e
-        
+        cameras = self.get_available_cameras()
+        # Look for overview camera first
+        overview_camera = None
+        underview_camera = None
+        for camera_data in cameras:
+            user_label, camera_index, cam_name, default_res = camera_data
+            if "overview_cam" in user_label.lower():
+                overview_camera = (cam_name, camera_index, user_label)
+            if "underview_cam" in user_label.lower():
+                underview_camera = (cam_name, camera_index, user_label)
+        #         break
+        if overview_camera:
+            cam_name, camera_index, user_label = overview_camera
+
+            success = self.start_camera_capture(
+                cam_name,
+                camera_index,
+                width=default_res[0],
+                height=default_res[1]
+            )
+
+        if underview_camera:
+            cam_name, camera_index, user_label = underview_camera
+            success = self.start_camera_capture(
+                cam_name,
+                camera_index,
+                width=default_res[0],
+                height=default_res[1]
+            )
+        time.sleep(2)
         thread = self.labware_model.run_in_thread(
-            calibrate_operation,
+            self.labware_model.calibrate_tip,
             on_result=on_result,
             on_error=on_error,
             on_finished=on_finished

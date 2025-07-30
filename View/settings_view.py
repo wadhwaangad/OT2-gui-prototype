@@ -393,5 +393,5 @@ class CameraCalibrationWindow(QDialog):
             self.update_timer.stop()
         globals.calibration_active = False
         self.controller.stop_camera_capture(self.camera_name)
-        self.controller.activate_keyboard_movement()
+        self.controller.deactivate_keyboard_movement()
         event.accept()

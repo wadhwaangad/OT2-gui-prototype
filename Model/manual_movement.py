@@ -94,8 +94,7 @@ class ManualMovementModel:
         """Deactivate keyboard movement controls."""
         try:
             # Remove all hotkeys
-            for hotkey in self.hotkeys:
-                keyboard.remove_hotkey(hotkey)
+            keyboard.unhook_all() 
             self.hotkeys.clear()
             self.keyboard_active = False
             print("Keyboard movement deactivated")

@@ -16,6 +16,8 @@ import Model.globals as globals
 import Model.utils as utils
 from Model.manual_movement import ManualMovementModel
 from Model.camera import frameOperations as frame_ops
+import keyboard
+import time
 OverviewCameraName = "HD USB CAMERA"
 class SettingsModel:
     """Model for handling settings and robot control operations."""
@@ -229,7 +231,7 @@ class SettingsModel:
         
         return detector, board
 
-    def _draw_calibration_overlay(self, frame: np.ndarray, manual_movement: ManualMovementModel) -> np.ndarray:
+    def _draw_calibration_overlay(self, frame: np.ndarray) -> np.ndarray:
         """Draw calibration overlay with robot coordinates and reference points."""
         # Get robot position
         x, y, z = globals.robot_api.get_position(verbose=False)[0].values()
@@ -239,8 +241,6 @@ class SettingsModel:
                                                        cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
         cv2.rectangle(frame, (10, 0), (10 + text_width, text_height + 100), (0, 0, 0), -1)
         cv2.putText(frame, f"Robot coords: ({x:.2f}, {y:.2f}, {z:.2f})", (10, 30), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        cv2.putText(frame, f"Step size: {manual_movement.step} mm", (10, 70), 
                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         
         # Draw center point
@@ -312,7 +312,7 @@ class SettingsModel:
             (calib_origin[0] - spacing, calib_origin[1] + spacing)   # Left-Down
         ]
 
-    def _perform_multi_point_calibration(self, calibration_points: list, cap, detector, manual_movement: ManualMovementModel) -> tuple:
+    def _perform_multi_point_calibration(self, calibration_points: list, cap, detector) -> tuple:
         """Perform calibration at multiple points and collect coordinate pairs."""
         robot_coords = []
         camera_coords = []
@@ -320,10 +320,11 @@ class SettingsModel:
         for calib_pt in calibration_points:
             # Move robot to calibration point
             globals.robot_api.move_to_coordinates((*calib_pt, 100), min_z_height=1, verbose=False)
+            time.sleep(1)
             ret, frame = cap.read()
-            frame = frame_ops.undistort_frame(frame)
+            # frame = frame_ops.undistort_frame(frame)
             # Draw overlay
-            frame = self._draw_calibration_overlay(frame, manual_movement)
+            frame = self._draw_calibration_overlay(frame)
             
             # Detect markers
             marker_corners, _ = self._detect_and_draw_markers(frame, detector)
@@ -338,6 +339,7 @@ class SettingsModel:
                 camera_coords.append((center_x, center_y))
             
             globals.calibration_frame = frame
+            
         
         return robot_coords, camera_coords
 
@@ -362,7 +364,6 @@ class SettingsModel:
         try:
             # Load calibration configuration
             calibration_data = utils.load_calibration_config(calibration_profile)
-            manual_movement = ManualMovementModel()
             calib_origin = calibration_data["calib_origin"]
             
             # Initialize robot position and camera
@@ -384,7 +385,7 @@ class SettingsModel:
                 ret, frame = cap.read()
                 
                 # Draw overlay
-                frame = self._draw_calibration_overlay(frame, manual_movement)
+                frame = self._draw_calibration_overlay(frame)
                 
                 # Detect and draw markers
                 marker_corners, marker_ids = self._detect_and_draw_markers(frame, detector)
@@ -397,6 +398,9 @@ class SettingsModel:
                 
                 globals.calibration_frame = frame
                 if keyboard.is_pressed('q'):
+                    current_position = globals.robot_api.get_position(verbose=False)[0]
+                    calib_origin = (current_position['x'], current_position['y'], current_position['z'])
+                    calibration_data['calib_origin'] = calib_origin
                     keyboard.unhook_all()  
                     break
             
@@ -411,7 +415,7 @@ class SettingsModel:
             print("Starting multi-point calibration...")
             calibration_points = self._generate_calibration_points(calib_origin)
             robot_coords, camera_coords = self._perform_multi_point_calibration(
-                calibration_points, cap, detector, manual_movement
+                calibration_points, cap, detector
             )
             
             # Compute transformation matrix

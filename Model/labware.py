@@ -11,7 +11,14 @@ import paths
 import requests
 from PyQt6.QtCore import QThread
 from Model.worker import Worker
-
+import cv2
+import Model.utils as utils
+import time
+import numpy as np
+from ultralytics import YOLO
+import pandas as pd
+OverviewCameraName = "HD USB CAMERA"
+UnderviewCameraName = "Arducam B0478 (USB3 48MP)"
 class LabwareModel:
     """Model for handling labware declarations and configurations."""
     
@@ -345,3 +352,160 @@ class LabwareModel:
         except Exception as e:
             print(f"Error picking up tip: {e}")
             return False
+
+    def calibrate_tip(self):
+        current_status = globals.robot_api.get("lights", globals.robot_api.HEADERS)
+        current_status = json.loads(current_status.text)
+        is_on = current_status['on']
+        if not is_on:
+            globals.robot_api.toggle_lights()
+        calibration_profile = "checkerboard"
+        path = os.path.join(paths.BASE_DIR, 'outputs', 'images', 'target_template_2.png')
+        template = cv2.imread(path, 0)  # Replace 'template.png' with your template image path
+        template_height, template_width = template.shape[:2]
+        calibration_data = utils.load_calibration_config(calibration_profile)
+        tf_mtx = np.array(calibration_data['tf_mtx'])
+        calib_origin = np.array(calibration_data['calib_origin'])[:2]
+        offset = np.array(calibration_data['offset'])
+        model_path = os.path.join(paths.ML_MODELS_DIR,'tip_detector_v1.pt')
+        model = YOLO(model_path)
+        over_cam = globals.active_cameras[OverviewCameraName]
+        under_cam = globals.active_cameras[UnderviewCameraName]
+
+
+        #Settings
+        calib_module_coordinates = (255, 145.25, 100)  # Coordinates for the pipette offset calibration module
+        calib_module_height = 69  # Height for the pipette offset calibration module
+        detection_offset_x = 2
+        detection_offset_y = 2  # Offset to apply to the detected coordinates
+        #Move to pipette offset calibration module:
+        globals.robot_api.move_to_coordinates(calib_module_coordinates, min_z_height=calib_module_height-0.1, verbose=False)
+        time.sleep(1)
+
+        ret, frame = over_cam.read()
+        assert ret, "Failed to capture frame from over_cam."
+        image = frame.copy()
+        image = image[..., ::-1]  # Convert BGR to RGB as YOLO expects RGB input
+        results = model.predict(
+                source=image,  # Now pointing to a directory instead of a single file
+                conf=0.25,         # Confidence threshold
+                save=False,         # Save the annotated images
+                save_txt=False,    # Save YOLO-format prediction labels (optional)
+                show=False,         # Show images in pop-up windows (if GUI available)
+                imgsz=2016,
+                verbose = False               # Ensure inference matches your training resolution
+            )
+
+        image_center = (image.shape[1] // 2, image.shape[0] // 2)
+        data = []
+        for r in results:
+            for box in r.boxes:
+                cls = int(box.cls[0])
+                conf = float(box.conf[0])
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                center_x = (x1 + x2) // 2
+                center_y = (y1 + y2) // 2
+                data.append({'class': model.names[cls], 'confidence': conf, 'center_x': center_x, 'center_y': center_y})
+
+        # Select the point closest to the center of the image
+        if data:
+            closest_obj = min(
+                (obj for obj in data if obj['class'] == 'point'),
+                key=lambda obj: (obj['center_x'] - image_center[0]) ** 2 + (obj['center_y'] - image_center[1]) ** 2,
+                default=None
+            )
+            if closest_obj is not None:
+                cv2.circle(frame, (closest_obj['center_x'], closest_obj['center_y']), 8, (0, 255, 255), 2)
+                cv2.putText(frame, "Closest", (closest_obj['center_x'] + 10, closest_obj['center_y'] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+        assert closest_obj is not None, "No 'point' class detected in the image."
+        crosshair_x, crosshair_y = closest_obj['center_x'], closest_obj['center_y']
+
+        #Move to the center of the detected template
+        X_init, Y_init, _ = tf_mtx @ (crosshair_x, crosshair_y, 1)
+        print('init:', X_init, Y_init)
+
+        x, y, _ = globals.robot_api.get_position(verbose=False)[0].values()
+        diff = np.array([x,y]) - np.array(calibration_data['calib_origin'])[:2]
+        X = X_init + diff[0] + offset[0]
+        Y = Y_init + diff[1] + offset[1]
+
+        print(f"Robot coords: ({x}, {y})")
+        print(f"Clicked on: ({X}, {Y})")
+        globals.robot_api.move_to_coordinates((X + detection_offset_x, Y + detection_offset_y, calib_module_height), min_z_height=calib_module_height-0.1, verbose=False)
+        time.sleep(1)
+
+        ret, frame = under_cam.read()
+        assert ret, "Failed to capture frame from under_cam."
+        frame = frame[..., ::-1]  # Convert BGR to RGB as YOLO expects RGB input
+        results = model.predict(
+                source=frame,  # Now pointing to a directory instead of a single file
+                conf=0.25,         # Confidence threshold
+                save=False,         # Save the annotated images
+                save_txt=False,    # Save YOLO-format prediction labels (optional)
+                show=False,         # Show images in pop-up windows (if GUI available)
+                imgsz=2016,
+                verbose = False               # Ensure inference matches your training resolution
+            )
+
+        image = frame.copy()
+        image_center = (image.shape[1] // 2, image.shape[0] // 2)
+        data = []
+        for r in results:
+            for box in r.boxes:
+                cls = int(box.cls[0])
+                conf = float(box.conf[0])
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                center_x = (x1 + x2) // 2
+                center_y = (y1 + y2) // 2
+                data.append({'class': model.names[cls], 'confidence': conf, 'center_x': center_x, 'center_y': center_y})
+
+        # Create a dataframe
+        df = pd.DataFrame(data)
+
+        # Calculate the distance of each "point" to the center of the frame
+        df['distance_to_center'] = ((df['center_x'] - image_center[0]) ** 2 + (df['center_y'] - image_center[1]) ** 2) ** 0.5
+
+        # Identify the closest "point" to the center of the frame
+        df['is_closest_to_center'] = (df['class'] == 'point') & (df['distance_to_center'] == df.loc[df['class'] == 'point', 'distance_to_center'].min()) & (df['distance_to_center'] < 100)
+
+        if df['is_closest_to_center'].any():
+            assert 'tip' in df['class'].values and 'point' in df['class'].values, "Both 'tip' and 'point' classes must be present in the dataframe."
+            distances_from_closest = np.sqrt(
+                (df.loc[df['is_closest_to_center'] & (df['class'] == 'point'), 'center_x'].values[0] - df.loc[df['class'] == 'point', 'center_x'])**2 +
+                (df.loc[df['is_closest_to_center'] & (df['class'] == 'point'), 'center_y'].values[0] - df.loc[df['class'] == 'point', 'center_y'])**2
+            )
+            distances_from_closest = distances_from_closest[distances_from_closest > 0]
+            linear_distance_ratio = 20.25 / np.mean(distances_from_closest)
+                # Calculate the distance from the center-most "point" class to the "tip" class
+            center_point_coords = df.loc[df['is_closest_to_center'], ['center_x', 'center_y']].values[0]
+            tip_coords = df.loc[df['class'] == 'tip', ['center_x', 'center_y']].values[0]
+
+            x_dist_to_tip = center_point_coords[0] - tip_coords[0]
+            y_dist_to_tip = center_point_coords[1] - tip_coords[1]
+            print(x_dist_to_tip, y_dist_to_tip)
+
+            y_dist_to_tip_mm = x_dist_to_tip * linear_distance_ratio
+            x_dist_to_tip_mm = y_dist_to_tip * linear_distance_ratio
+            print(f"x_dist_to_tip_mm: {x_dist_to_tip_mm}, y_dist_to_tip_mm: {y_dist_to_tip_mm}")
+
+        assert x_dist_to_tip_mm and y_dist_to_tip_mm, "Failed to calculate distances to tip."
+        actual_offset_x = x_dist_to_tip_mm + detection_offset_x
+        actual_offset_y = y_dist_to_tip_mm + detection_offset_y
+        assert abs(actual_offset_x) < 40 and abs(actual_offset_y) < 40, "Offsets are too large, please check the calibration."
+        globals.robot_api.move_relative('x', x_dist_to_tip_mm, verbose=False)
+        globals.robot_api.move_relative('y', y_dist_to_tip_mm, verbose=False)
+
+        # Take one frame from the under camera and display it for verification
+        time.sleep(0.5)
+        ret, verification_frame = under_cam.read()
+        assert ret, "Failed to capture verification frame from under_cam."
+
+        globals.tip_calibration_frame = verification_frame
+
+
+        print(f"Actual offset applied: ({actual_offset_x}, {actual_offset_y}) mm")
+        x, y, _ = globals.robot_api.get_position(verbose=False)[0].values()
+        calibration_data['offset'] = [x-(X_init+diff[0]), y-(Y_init+diff[1])]
+        utils.save_calibration_config(calibration_profile, calibration_data)
+
+        globals.robot_api.retract_axis('leftZ')    

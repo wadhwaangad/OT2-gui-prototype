@@ -572,10 +572,10 @@ class LabwareView(QWidget):
     
     def on_calibrate_tip(self):
         """Handle calibrate tip button click."""
-        def on_success(frame):
-            if frame is not None:
+        def on_success():
+            if globals.tip_calibration_frame is not None:
                 # Display the frame in a separate dialog window
-                dialog = FrameViewDialog(frame, "Tip Calibration Frame", self)
+                dialog = FrameViewDialog(globals.tip_calibration_frame, "Tip Calibration Frame", self)
                 dialog.exec()
                 print("Calibration frame captured successfully")
             else:

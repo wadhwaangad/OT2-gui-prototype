@@ -21,7 +21,8 @@ class CameraTestWindow(QDialog):
         self.camera_index = camera_index
         self.controller = controller
         self.is_capturing = False
-        
+        self.rotation_angle = 0
+
         self.setWindowTitle(f"Camera Test - {camera_name}")
         self.setMinimumSize(800, 600)
         
@@ -124,6 +125,10 @@ class CameraTestWindow(QDialog):
         self.capture_btn.clicked.connect(self.toggle_capture)
         button_layout.addWidget(self.capture_btn)
 
+        self.rotate_btn = QPushButton("Rotate 90°")
+        self.rotate_btn.clicked.connect(self.rotate_feed)
+        button_layout.addWidget(self.rotate_btn)
+
         controls_layout.addLayout(res_layout)
         controls_layout.addLayout(focus_layout)
         controls_layout.addLayout(button_layout)
@@ -163,8 +168,8 @@ class CameraTestWindow(QDialog):
         """Setup timer for video updates."""
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_frame)
-        self.timer.start(33)  # ~30 FPS
-    
+        self.timer.start(17)  # ~60 FPS
+
     def start_capture(self):
         """Start camera capture."""
         width, height = self.get_selected_resolution()
@@ -194,13 +199,34 @@ class CameraTestWindow(QDialog):
             self.stop_capture()
         else:
             self.start_capture()
-    
+    def rotate_feed(self):
+        """Rotate the camera feed by 90 degrees clockwise."""
+        self.rotation_angle = (self.rotation_angle + 90) % 360
+        # Update button text to show current rotation
+        if self.rotation_angle == 0:
+            self.rotate_btn.setText("Rotate 90°")
+        else:
+            self.rotate_btn.setText(f"Rotate 90° ({self.rotation_angle}°)")
+
     def update_frame(self):
         """Update the video frame."""
         if self.is_capturing:
             ret, frame = self.controller.get_camera_frame(self.camera_name)
             if ret and frame is not None:
+                # Apply rotation if needed
+                if self.rotation_angle != 0:
+                    frame = self.rotate_frame(frame, self.rotation_angle)
                 self.video_display.set_frame(frame)
+
+    def rotate_frame(self, frame, angle):
+        """Rotate frame by the specified angle."""
+        if angle == 90:
+            return cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+        elif angle == 180:
+            return cv2.rotate(frame, cv2.ROTATE_180)
+        elif angle == 270:
+            return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        return frame
     
     def on_focus_changed(self, value):
         """Handle focus slider changes."""

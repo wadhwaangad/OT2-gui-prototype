@@ -27,3 +27,4 @@ deck_layout = {
 calibration_active = False
 robot_coords = []
 camera_coords = []
+tip_calibration_frame = None

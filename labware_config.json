@@ -4,12 +4,18 @@
     "slot_2": null,
     "slot_3": null,
     "slot_4": null,
-    "slot_5": null,
+    "slot_5": {
+      "labware_name": "corning_96_wellplate_360ul_flat",
+      "labware_type": "wellplate"
+    },
     "slot_6": null,
     "slot_7": null,
     "slot_8": null,
     "slot_9": null,
-    "slot_10": null,
+    "slot_10": {
+      "labware_name": "vwr_96_tiprack_200ul_xl",
+      "labware_type": "tiprack"
+    },
     "slot_11": null,
     "slot_12": null
   }
