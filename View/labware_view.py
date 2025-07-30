@@ -576,6 +576,10 @@ class LabwareView(QWidget):
             if globals.tip_calibration_frame is not None:
                 # Display the frame in a separate dialog window
                 dialog = FrameViewDialog(globals.tip_calibration_frame, "Tip Calibration Frame", self)
+                # Make the dialog zoomable
+                if hasattr(dialog, "setWindowFlag"):
+                    dialog.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint, True)
+                dialog.setWindowState(dialog.windowState() | Qt.WindowState.WindowMaximized)
                 dialog.exec()
                 print("Calibration frame captured successfully")
             else:
