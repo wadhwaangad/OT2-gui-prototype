@@ -13,6 +13,7 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QSpinBox
 from View.zoomable_video_widget import VideoDisplayWidget
+from View.calibration_profile_dialog import CalibrationProfileDialog
 import time
 import Model.globals as globals
 class SettingsView(QWidget):
@@ -269,7 +270,16 @@ class SettingsView(QWidget):
     
     def on_calibrate_camera(self):
         """Handle camera calibration button click."""
-        cameras= self.controller.get_available_cameras()
+        # Show calibration profile selection dialog
+        dialog = CalibrationProfileDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            selected_profile = dialog.get_selected_profile()
+            if selected_profile:
+                self._start_calibration(selected_profile)
+        
+    def _start_calibration(self, calibration_profile):
+        """Start calibration with the selected profile."""
+        cameras = self.controller.get_available_cameras()
         # Look for overview camera first
         overview_camera = None
         for camera_data in cameras:
@@ -291,7 +301,7 @@ class SettingsView(QWidget):
             pass 
         time.sleep(1)
         self.controller.activate_keyboard_movement()
-        self.controller.calibrate_camera()
+        self.controller.calibrate_camera(calibration_profile)
         
 
     def on_placeholder_2(self):
@@ -370,16 +380,7 @@ class CameraCalibrationWindow(QDialog):
         """Update the video frame."""
         if self.camera_name in globals.active_cameras:
             frame = self.controller.get_calibration_frame()
-            if frame is not None:
-                # Add center dot annotation for calibration
-                annotated_frame = frame.copy()
-                height, width = annotated_frame.shape[:2]
-                center_x, center_y = width // 2, height // 2
-                
-                # Draw a red dot in the center
-                cv2.circle(annotated_frame, (center_x, center_y), 5, (0, 0, 255), -1)
-                
-                self.video_display.set_frame(annotated_frame)
+            self.video_display.set_frame(frame)
     
     def reset_view(self):
         """Reset the video view."""

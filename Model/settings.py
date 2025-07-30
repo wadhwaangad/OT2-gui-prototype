@@ -15,6 +15,8 @@ from Model.worker import Worker
 import Model.globals as globals
 import Model.utils as utils
 from Model.manual_movement import ManualMovementModel
+from Model.camera import frameOperations as frame_ops
+OverviewCameraName = "HD USB CAMERA"
 class SettingsModel:
     """Model for handling settings and robot control operations."""
     
@@ -214,106 +216,215 @@ class SettingsModel:
             return False
 
     
-    def calibrate_camera(self, calibration_profile) -> bool:
-        """Calibrate the camera."""
-        if not globals.robot_initialized:
-            print("Robot not initialized. Please initialize first.")
-            return False
-        try:
-            calibration_data = utils.load_calibration_config(calibration_profile)
-            manual_movement = ManualMovementModel()
-            location=calibration_data["calib_origin"]
-            globals.robot_api.retract_axis("leftZ")
-            globals.robot_api.move_to_coordinates(location,min_z_height=1, verbose=False)
-            cap=globals.active_cameras["HD USB CAMERA"]
-            ret, globals.calibration_frame = cap.read()
-            squaresX=7
-            squaresY=5 
-            squareLength=0.022
-            markerLength=0.011
-            aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
-            params = cv2.aruco.DetectorParameters()
-            detector = cv2.aruco.ArucoDetector(aruco_dict, params)
-            board = cv2.aruco.CharucoBoard((squaresX, squaresY), squareLength, markerLength, aruco_dict)
-            globals.calibration_active = True
-            while globals.calibration_active:
-                ret, frame = cap.read()
-   
-                x, y, z = globals.robot_api.get_position(verbose=False)[0].values()
-                (text_width, text_height), _ = cv2.getTextSize(f"Robot coords: ({x:.2f}, {y:.2f}, {z:.2f})", cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
-                cv2.rectangle(frame, (10, 0), (10 + text_width, text_height + 100), (0, 0, 0), -1)
-                cv2.putText(frame, f"Robot coords: ({x:.2f}, {y:.2f}, {z:.2f})", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                cv2.putText(frame, f"Step size: {manual_movement.step} mm", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    def _initialize_marker_detector(self) -> tuple:
+        """Initialize ArUco marker detector and board."""
+        aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
+        params = cv2.aruco.DetectorParameters()
+        detector = cv2.aruco.ArucoDetector(aruco_dict, params)
+        
+        # Board parameters
+        squares_x, squares_y = 7, 5
+        square_length, marker_length = 0.022, 0.011
+        board = cv2.aruco.CharucoBoard((squares_x, squares_y), square_length, marker_length, aruco_dict)
+        
+        return detector, board
 
-                center_screen_x = frame.shape[1] // 2
-                center_screen_y = frame.shape[0] // 2
-                cv2.circle(frame, (center_screen_x, center_screen_y), 5, (0, 0, 255), -1)
-                cv2.putText(frame, f"Center: ({center_screen_x}, {center_screen_y})", (center_screen_x + 10, center_screen_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+    def _draw_calibration_overlay(self, frame: np.ndarray, manual_movement: ManualMovementModel) -> np.ndarray:
+        """Draw calibration overlay with robot coordinates and reference points."""
+        # Get robot position
+        x, y, z = globals.robot_api.get_position(verbose=False)[0].values()
+        
+        # Prepare text overlay
+        (text_width, text_height), _ = cv2.getTextSize(f"Robot coords: ({x:.2f}, {y:.2f}, {z:.2f})", 
+                                                       cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+        cv2.rectangle(frame, (10, 0), (10 + text_width, text_height + 100), (0, 0, 0), -1)
+        cv2.putText(frame, f"Robot coords: ({x:.2f}, {y:.2f}, {z:.2f})", (10, 30), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(frame, f"Step size: {manual_movement.step} mm", (10, 70), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        
+        # Draw center point
+        center_screen_x = frame.shape[1] // 2
+        center_screen_y = frame.shape[0] // 2
+        cv2.circle(frame, (center_screen_x, center_screen_y), 5, (0, 0, 255), -1)
+        cv2.putText(frame, f"Center: ({center_screen_x}, {center_screen_y})", 
+                   (center_screen_x + 10, center_screen_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+        
+        # Draw quarter centers
+        quarter_centers = [
+            (center_screen_x // 2, center_screen_y // 2),
+            (3 * center_screen_x // 2, center_screen_y // 2),
+            (center_screen_x // 2, 3 * center_screen_y // 2),
+            (3 * center_screen_x // 2, 3 * center_screen_y // 2)
+        ]
+        
+        for qx, qy in quarter_centers:
+            cv2.circle(frame, (qx, qy), 5, (0, 255, 255), -1)
+            cv2.putText(frame, f"({qx}, {qy})", (qx + 10, qy - 10), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+        
+        return frame
 
-                # Calculate the center of each quarter of the screen
-                quarter_centers = [
-                (center_screen_x // 2, center_screen_y // 2),
-                (3 * center_screen_x // 2, center_screen_y // 2),
-                (center_screen_x // 2, 3 * center_screen_y // 2),
-                (3 * center_screen_x // 2, 3 * center_screen_y // 2)
-                ]
-
-                # Draw circles at the center of each quarter
-                for qx, qy in quarter_centers:
-                cv2.circle(frame, (qx, qy), 5, (0, 255, 255), -1)
-                cv2.putText(frame, f"({qx}, {qy})", (qx + 10, qy - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-
-                marker_corners, marker_ids, _ = detector.detectMarkers(frame)
-                if marker_corners:
-                for corner in marker_corners:
+    def _detect_and_draw_markers(self, frame: np.ndarray, detector) -> tuple:
+        """Detect ArUco markers and draw them on the frame."""
+        marker_corners, marker_ids, _ = detector.detectMarkers(frame)
+        
+        if marker_corners:
+            for corner in marker_corners:
                 corner = corner.reshape((4, 2))
                 for point in corner:
                     cv2.circle(frame, tuple(point.astype(int)), 5, (0, 255, 0), -1)
-
+                
                 center_x = int(np.mean(corner[:, 0]))
                 center_y = int(np.mean(corner[:, 1]))
                 cv2.circle(frame, (center_x, center_y), 5, (255, 0, 0), -1)
-                cv2.putText(frame, f"({center_x}, {center_y})", (center_x + 10, center_y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+                cv2.putText(frame, f"({center_x}, {center_y})", (center_x + 10, center_y - 10), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+        
+        return marker_corners, marker_ids
 
-                # Calculate side lengths
-                side_lengths = []
-                if marker_corners:
-                for corner in marker_corners[0]:
-                for i in range(4):
-                    side_length = np.linalg.norm(corner[i] - corner[(i + 1) % 4])
-                    side_lengths.append(side_length)
+    def _calculate_size_ratios(self, marker_corners) -> tuple:
+        """Calculate size conversion ratios from marker corners."""
+        if not marker_corners:
+            return None, None
+        
+        side_lengths = []
+        for corner in marker_corners[0]:
+            for i in range(4):
+                side_length = np.linalg.norm(corner[i] - corner[(i + 1) % 4])
+                side_lengths.append(side_length)
+        
+        average_side_length = np.mean(side_lengths)
+        area = cv2.contourArea(marker_corners[0])
+        physical_size = 13.83  # Physical size constant
+        
+        one_d_ratio = physical_size / average_side_length
+        size_conversion_ratio = physical_size ** 2 / area
+        
+        return one_d_ratio, size_conversion_ratio
 
-                # Calculate the average side length
-                average_side_length = np.mean(side_lengths)
-                area = cv2.contourArea(marker_corners[0])
-                one_d_ratio = 13.83 / average_side_length
-                size_conversion_ratio = 13.83 ** 2 / area
-                cv2.putText(frame, f"Area of marker: {area:.2f}", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                globals.calibration_frame = frame
-                if key_pressed == ord('q'):
-                    keyboard.unhook_all()
-                    break
-                if key_pressed == ord('s'):
-                    x, y, z = globals.robot_api.get_position(verbose=False)[0].values()
-                    globals.robot_coords.append((x, y))
-                    globals.camera_coords.append((center_x, center_y))
+    def _generate_calibration_points(self, calib_origin: tuple, spacing: float = 5.0) -> list:
+        """Generate calibration points around the origin."""
+        return [
+            (calib_origin[0] + spacing, calib_origin[1] + spacing),  # Right-Down
+            (calib_origin[0] + spacing, calib_origin[1] - spacing),  # Right-Up
+            (calib_origin[0] - spacing, calib_origin[1] - spacing),  # Left-Up
+            (calib_origin[0] - spacing, calib_origin[1] + spacing)   # Left-Down
+        ]
+
+    def _perform_multi_point_calibration(self, calibration_points: list, cap, detector, manual_movement: ManualMovementModel) -> tuple:
+        """Perform calibration at multiple points and collect coordinate pairs."""
+        robot_coords = []
+        camera_coords = []
+        
+        for calib_pt in calibration_points:
+            # Move robot to calibration point
+            globals.robot_api.move_to_coordinates((*calib_pt, 100), min_z_height=1, verbose=False)
+            ret, frame = cap.read()
+            frame = frame_ops.undistort_frame(frame)
+            # Draw overlay
+            frame = self._draw_calibration_overlay(frame, manual_movement)
+            
+            # Detect markers
+            marker_corners, _ = self._detect_and_draw_markers(frame, detector)
+            
+            if marker_corners:
+                center_x = int(np.mean(marker_corners[0].reshape((4, 2))[:, 0]))
+                center_y = int(np.mean(marker_corners[0].reshape((4, 2))[:, 1]))
+                
+                # Store coordinate pairs
+                x, y, z = globals.robot_api.get_position(verbose=False)[0].values()
+                robot_coords.append((x, y))
+                camera_coords.append((center_x, center_y))
+            
+            globals.calibration_frame = frame
+        
+        return robot_coords, camera_coords
+
+    def _compute_transformation_matrix(self, robot_coords: list, camera_coords: list) -> np.ndarray:
+        """Compute transformation matrix from coordinate pairs."""
+        sorted_camera_coords = utils.sort_coordinates(camera_coords)
+        sorted_robot_coords = utils.sort_coordinates(robot_coords, reverse_y=True)
+        
+        robot_to_camera_coords = {
+            tuple(robot_coord): tuple(camera_coord) 
+            for robot_coord, camera_coord in zip(sorted_robot_coords, sorted_camera_coords)
+        }
+        
+        return utils.compute_tf_mtx(robot_to_camera_coords)
+
+    def calibrate_camera(self, calibration_profile) -> bool:
+        """Calibrate the camera using ArUco markers."""
+        if not globals.robot_initialized:
+            print("Robot not initialized. Please initialize first.")
+            return False
+        
+        try:
+            # Load calibration configuration
             calibration_data = utils.load_calibration_config(calibration_profile)
-            calibration_data['size_conversion_ratio'] = size_conversion_ratio
-            calibration_data['one_d_ratio'] = one_d_ratio
-            utils.save_calibration_config(calibration_profile, calibration_data)
-            spacing = 5  # Distance from the calib_point in mm
-            # Calculate the four coordinates
-            calibration_points = [
-                (calib_origin[0] + spacing, calib_origin[1] + spacing),  # Right
-                (calib_origin[0] + spacing, calib_origin[1] - spacing),  # Left
-                (calib_origin[0] - spacing, calib_origin[1] - spacing),  # Up
-                (calib_origin[0] - spacing, calib_origin[1] + spacing)   # Down
-            ]
-
-            robot_coords = []
-            camera_coords = []
-            return True
-
+            manual_movement = ManualMovementModel()
+            calib_origin = calibration_data["calib_origin"]
+            
+            # Initialize robot position and camera
+            globals.robot_api.retract_axis("leftZ")
+            globals.robot_api.move_to_coordinates(calib_origin, min_z_height=1, verbose=False)
+            cap = globals.active_cameras[OverviewCameraName]
+            ret, globals.calibration_frame = cap.read()
+            
+            # Initialize marker detection
+            detector, board = self._initialize_marker_detector()
+            
+            # Initial marker detection and size ratio calculation
+            globals.calibration_active = True
+            one_d_ratio = None
+            size_conversion_ratio = None
+            
+            print("Starting initial marker detection phase...")
+            while True:
+                ret, frame = cap.read()
+                
+                # Draw overlay
+                frame = self._draw_calibration_overlay(frame, manual_movement)
+                
+                # Detect and draw markers
+                marker_corners, marker_ids = self._detect_and_draw_markers(frame, detector)
+                
+                # Calculate size ratios
+                if marker_corners:
+                    one_d_ratio, size_conversion_ratio = self._calculate_size_ratios(marker_corners)
+                    cv2.putText(frame, f"Area of marker: {cv2.contourArea(marker_corners[0]):.2f}", 
+                               (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                
+                globals.calibration_frame = frame
+                if keyboard.is_pressed('q'):
+                    keyboard.unhook_all()  
+                    break
+            
+            # Save size ratios
+            if one_d_ratio is not None and size_conversion_ratio is not None:
+                calibration_data['size_conversion_ratio'] = size_conversion_ratio
+                calibration_data['one_d_ratio'] = one_d_ratio
+                utils.save_calibration_config(calibration_profile, calibration_data)
+                print(f"Saved size ratios: 1D={one_d_ratio:.4f}, 2D={size_conversion_ratio:.4f}")
+            
+            # Multi-point calibration
+            print("Starting multi-point calibration...")
+            calibration_points = self._generate_calibration_points(calib_origin)
+            robot_coords, camera_coords = self._perform_multi_point_calibration(
+                calibration_points, cap, detector, manual_movement
+            )
+            
+            # Compute transformation matrix
+            if len(robot_coords) >= 4 and len(camera_coords) >= 4:
+                tf_mtx = self._compute_transformation_matrix(robot_coords, camera_coords)
+                calibration_data['tf_mtx'] = tf_mtx.tolist()
+                utils.save_calibration_config(calibration_profile, calibration_data)
+                print("Camera calibration completed successfully!")
+                return True
+            else:
+                print("Insufficient calibration points collected.")
+                return False
+            
         except Exception as e:
             print(f"Error in calibrating camera: {e}")
             return False
@@ -344,44 +455,5 @@ class SettingsModel:
         """Get current lights status."""
         return self.lights_on
     
-class MarkerDetector():
-    def __init__(self, 
-                 squaresX: int = 7, 
-                 squaresY: int = 5,
-                 squareLength: float = 0.022, 
-                 markerLength: float = 0.011,
-                 physicalSize: float = 13.83):
-        
-        self.squaresX = squaresX
-        self.squaresY = squaresY
-        self.squareLength = squareLength
-        self.markerLength = markerLength
-        self.physicalSize = physicalSize
-        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
-        self.parameters = cv2.aruco.DetectorParameters()
-        self.detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.parameters)
-
-
-    def detect_markers(self, frame: np.ndarray):
-        self.marker_corners, self.marker_ids, _ = self.detector.detectMarkers(frame)
-        return self.marker_corners, self.marker_ids
-
-    def calculate_size_ratios(self, marker_corners):
-        if not marker_corners or len(marker_corners) == 0:
-            return None, None
-        
-        side_lengths = []
-        if marker_corners:
-            for corner in marker_corners[0]:
-                for i in range(4):
-                    side_length = np.linalg.norm(corner[i] - corner[(i + 1) % 4])
-                    side_lengths.append(side_length)
-
-        # Calculate the average side length
-        average_side_length = np.mean(side_lengths)
-        area = cv2.contourArea(marker_corners[0])
-        self.one_d_ratio = self.physicalSize / average_side_length
-        self.size_conversion_ratio = self.physicalSize ** 2 / area
-        return self.one_d_ratio, self.size_conversion_ratio
 
     

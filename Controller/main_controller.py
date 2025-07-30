@@ -205,10 +205,10 @@ class MainController:
         """Load a pipette in a thread."""
         return self.settings_model.run_in_thread(self.settings_model.load_pipette, on_result=on_result, on_error=on_error, on_finished=on_finished)
 
-    def calibrate_camera(self, on_result=None, on_error=None, on_finished=None):
+    def calibrate_camera(self, calibration_profile, on_result=None, on_error=None, on_finished=None):
         """Calibrate the camera in a thread."""
-        return self.settings_model.run_in_thread(self.settings_model.calibrate_camera, on_result=on_result, on_error=on_error, on_finished=on_finished)
-        #self.settings_model.calibrate_camera()
+        return self.settings_model.run_in_thread(self.settings_model.calibrate_camera, calibration_profile, on_result=on_result, on_error=on_error, on_finished=on_finished)
+        #self.settings_model.calibrate_camera(calibration_profile)
     def get_calibration_frame(self):
         """Get the last captured calibration frame."""
         return globals.calibration_frame
