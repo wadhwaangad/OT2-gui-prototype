@@ -33,7 +33,7 @@ class SettingsModel:
         worker.moveToThread(thread)
 
         if on_result:
-            worker.result.connect(on_result)
+            worker.result.connect(on_result) 
         if on_error:
             worker.error.connect(on_error)
         if on_finished:
@@ -63,6 +63,8 @@ class SettingsModel:
             print("Initializing robot...")
             # Simulate initialization
             globals.robot_initialized = True
+            # print("Robot initialized successfully.")
+            time.sleep(0.1)                        
             return True
         except Exception as e:
             print(f"Error initializing robot: {e}")

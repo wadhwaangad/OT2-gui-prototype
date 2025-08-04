@@ -8,8 +8,9 @@ import os
 #     sys.path.insert(0, upstream_dir)
 
 # Now you can import the module
-from opentrons_api import ot2_api
-from microtissue_manipulator import core, utils
+import Model.globals as globals
+import Model.core as core
+import Model.utils as utils
 import numpy as np 
 import cv2
 import time
@@ -19,7 +20,8 @@ import string
 import pandas as pd
 from dataclasses import dataclass, asdict, fields
 from typeguard import typechecked
-
+import paths
+import datetime
 class Destination:
     WELL_PLATE_PRESETS = {
         6: (2, 3),   # 2 rows × 3 cols
@@ -174,14 +176,14 @@ class PickingProcedure():
                        picking_config: PickingConfig,
                        calibration_profile: str, 
                        cap: core.Camera, 
-                       openapi: ot2_api.OpentronsAPI):
+                       openapi):
         
         self.coord_queue = queue.Queue()
         self.cr = core.Core()
         self.shared_settings_inst = shared_settings
         self.config = picking_config
         self.cap = cap
-        self.openapi = openapi
+        self.openapi = globals.robot_api
 
         # ----------------------Robot configs-----------------------
         self.calibration_data = utils.load_calibration_config(calibration_profile)
@@ -355,3 +357,44 @@ class PickingProcedure():
                     
             except queue.Empty:
                 pass  # No new coordinates, continue looping
+class MarkdownLogger:
+    def __init__(self, log_dir=paths.LOGS_DIR, experiment_name=None, settings: dict = None, well_plate: pd.DataFrame = None):
+        os.makedirs(log_dir, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        if experiment_name is None:
+            experiment_name = f"experiment_{timestamp}"
+        self.log_file = os.path.join(log_dir, f"{experiment_name}_log_{timestamp}.md")
+        self._start_log(experiment_name, settings, well_plate)
+
+    def _start_log(self, experiment_name, settings, well_plate):
+        with open(self.log_file, 'w') as f:
+            f.write(f"# Log for {experiment_name}\n")
+            f.write(f"_Started on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_\n\n")
+            
+            if settings:
+                f.write("## Settings\n\n")
+                f.write("| Key | Value |\n")
+                f.write("| --- | ----- |\n")
+                for key, value in settings.items():
+                    f.write(f"| `{key}` | `{value}` |\n")
+                f.write("\n")
+
+            if well_plate is not None:
+                f.write("## Well Plate Plan\n\n")
+                f.write(well_plate.to_markdown(index=True))
+                f.write("\n\n")
+
+    def log_table(self, df: pd.DataFrame, title: str = "Table"):
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(self.log_file, 'a') as f:
+            f.write(f"- **[{timestamp}]** {title}\n\n")
+            f.write(df.to_markdown(index=False) + '\n\n')
+
+    def log(self, message):
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open(self.log_file, 'a') as f:
+            f.write(f"- **[{timestamp}]** {message}\n")
+
+    def log_section(self, title):
+        with open(self.log_file, 'a') as f:
+            f.write(f"\n## {title}\n\n")

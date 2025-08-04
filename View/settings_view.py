@@ -33,10 +33,15 @@ class SettingsView(QWidget):
         scroll_area = QScrollArea()
         scroll_widget = QWidget()
         main_layout = QVBoxLayout(scroll_widget)
+                
         
         # Robot Control Section
         robot_group = self.create_robot_control_group()
         main_layout.addWidget(robot_group)
+
+        # Calibration Profile Section
+        calibration_group = self.create_calibration_profile_group()
+        main_layout.addWidget(calibration_group)
         
         # Configuration Section
         config_group = self.create_configuration_group()
@@ -89,8 +94,6 @@ class SettingsView(QWidget):
         self.load_pipette_btn = QPushButton("Load Pipette")
         self.load_pipette_btn.clicked.connect(self.on_load_pipette)
         layout.addWidget(self.load_pipette_btn, 1, 2)
-        self.load_pipette_btn.clicked.connect(self.on_load_pipette)
-        layout.addWidget(self.load_pipette_btn, 2, 0)
         
         # Placeholder buttons
         self.placeholder_btn_1 = QPushButton("Calibrate Camera")
@@ -108,6 +111,32 @@ class SettingsView(QWidget):
         group.setLayout(layout)
         return group
     
+    def create_calibration_profile_group(self):
+        """Create calibration profile selection group."""
+        group = QGroupBox("Calibration Profile")
+        layout = QGridLayout()
+        
+        # Current profile display
+        layout.addWidget(QLabel("Current Profile:"), 0, 0)
+        self.current_profile_label = QLabel(globals.calibration_profile)
+        self.current_profile_label.setStyleSheet("font-weight: bold; color: #0066cc;")
+        layout.addWidget(self.current_profile_label, 0, 1)
+        
+        # Profile selection
+        layout.addWidget(QLabel("Select Profile:"), 1, 0)
+        self.calibration_profile_combo = QComboBox()
+        self.calibration_profile_combo.addItems(["checkerboard", "standardDeck"])
+        self.calibration_profile_combo.setCurrentText(globals.calibration_profile)
+        layout.addWidget(self.calibration_profile_combo, 1, 1)
+        
+        # Change profile button
+        self.change_profile_btn = QPushButton("Change Profile")
+        self.change_profile_btn.clicked.connect(self.on_change_calibration_profile)
+        layout.addWidget(self.change_profile_btn, 1, 2)
+        
+        group.setLayout(layout)
+        return group
+        
     def create_configuration_group(self):
         """Create configuration group."""
         group = QGroupBox("Configuration")
@@ -165,11 +194,12 @@ class SettingsView(QWidget):
         Instructions:
         
         1. Initialize Robot: Connect to and initialize the robot system
-        2. Add Slot Offsets: Configure positional offsets for precise alignment
-        3. Toggle Lights: Turn robot lighting on/off
-        4. Home Robot: Move robot to home position
-        5. Get Run Info: Retrieve current run status and information
-        6. Create Run: Initialize a new experimental run
+        2. Change Calibration Profile: Select a calibration profile for camera calibration
+        3. Add Slot Offsets: Configure positional offsets for precise alignment
+        4. Toggle Lights: Turn robot lighting on/off
+        5. Home Robot: Move robot to home position
+        6. Get Run Info: Retrieve current run status and information
+        7. Create Run: Initialize a new experimental run
         
         Note: Some functions require the robot to be initialized first.
         """)
@@ -267,15 +297,17 @@ class SettingsView(QWidget):
         def on_result(success):
             pass
         self.controller.add_slot_offsets(slots, x, y, z, on_result=on_result, on_error=None, on_finished=lambda: None)
-    
+    def on_change_calibration_profile(self):
+        """Handle calibration profile change button click."""
+        selected_profile = self.calibration_profile_combo.currentText()
+        globals.calibration_profile = selected_profile
+        self.current_profile_label.setText(selected_profile)
+        print(f"Calibration profile changed to: {selected_profile}")
+
     def on_calibrate_camera(self):
         """Handle camera calibration button click."""
         # Show calibration profile selection dialog
-        dialog = CalibrationProfileDialog(self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            selected_profile = dialog.get_selected_profile()
-            if selected_profile:
-                self._start_calibration(selected_profile)
+        self._start_calibration(globals.calibration_profile)
         
     def _start_calibration(self, calibration_profile):
         """Start calibration with the selected profile."""

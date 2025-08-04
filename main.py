@@ -77,9 +77,9 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.manual_movement_view, "Manual Movement")
         
         # Wellplate Viewer tab
-        from View.wellplate_view import WellplateView
+        from View.cuboidpicking_view import WellplateView
         self.wellplate_view = WellplateView(self.controller)
-        self.tab_widget.addTab(self.wellplate_view, "Wellplate Viewer")
+        self.tab_widget.addTab(self.wellplate_view, "Cuboid Picking")
     
     def setup_menu(self):
         """Setup the menu bar."""

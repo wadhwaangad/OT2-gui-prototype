@@ -1,5 +1,5 @@
 from typing import Dict
-from Model.camera import MultiprocessVideoCapture
+from Model.camera import MultiprocessVideoCapture, frameOperations
 from typing import Dict
 robot_api=None
 robot_initialized=False
@@ -28,3 +28,8 @@ calibration_active = False
 robot_coords = []
 camera_coords = []
 tip_calibration_frame = None
+calibration_profile= "checkerboard"
+if "HD USB CAMERA" in active_cameras and active_cameras["HD USB CAMERA"] is not None:
+    frame_ops = frameOperations(*active_cameras["HD USB CAMERA"].shape[0:-1])
+else:
+    frame_ops = None
