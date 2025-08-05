@@ -12,6 +12,7 @@ import cv2
 from Model.ot2_api import OpentronsAPI 
 from PyQt6.QtCore import QThread
 from Model.worker import Worker
+from Model.frame_capture import get_frame_capturer
 import Model.globals as globals
 import Model.utils as utils
 from Model.manual_movement import ManualMovementModel
@@ -19,12 +20,15 @@ from Model.camera import frameOperations as frame_ops
 import keyboard
 import time
 OverviewCameraName = "HD USB CAMERA"
+
 class SettingsModel:
     """Model for handling settings and robot control operations."""
     
     def __init__(self):
         self.lights_on = False
         self.active_threads=[]
+        # Frame capturer will be initialized with proper frame emitter later
+        self.frame_capturer = get_frame_capturer()
 
     def run_in_thread(self, fn, *args, on_result=None, on_error=None, on_finished=None, **kwargs):
         """Run a function in a separate thread using Worker."""
@@ -314,7 +318,7 @@ class SettingsModel:
             (calib_origin[0] - spacing, calib_origin[1] + spacing)   # Left-Down
         ]
 
-    def _perform_multi_point_calibration(self, calibration_points: list, cap, detector) -> tuple:
+    def _perform_multi_point_calibration(self, calibration_points: list, detector) -> tuple:
         """Perform calibration at multiple points and collect coordinate pairs."""
         robot_coords = []
         camera_coords = []
@@ -323,7 +327,10 @@ class SettingsModel:
             # Move robot to calibration point
             globals.robot_api.move_to_coordinates((*calib_pt, 100), min_z_height=1, verbose=False)
             time.sleep(1)
-            ret, frame = cap.read()
+            frame = self.frame_capturer.capture_frame(OverviewCameraName)
+            if frame is None:
+                print(f"Failed to capture frame at calibration point {calib_pt}")
+                continue
             # frame = frame_ops.undistort_frame(frame)
             # Draw overlay
             frame = self._draw_calibration_overlay(frame)
@@ -368,11 +375,16 @@ class SettingsModel:
             calibration_data = utils.load_calibration_config(calibration_profile)
             calib_origin = calibration_data["calib_origin"]
             
-            # Initialize robot position and camera
+            # Initialize robot position
             globals.robot_api.retract_axis("leftZ")
             globals.robot_api.move_to_coordinates(calib_origin, min_z_height=1, verbose=False)
-            cap = globals.active_cameras[OverviewCameraName]
-            ret, globals.calibration_frame = cap.read()
+            
+            # Get initial frame using frame capturer
+            initial_frame = self.frame_capturer.capture_frame(OverviewCameraName)
+            if initial_frame is None:
+                print("Failed to capture initial frame from overview camera")
+                return False
+            globals.calibration_frame = initial_frame
             
             # Initialize marker detection
             detector, board = self._initialize_marker_detector()
@@ -384,7 +396,10 @@ class SettingsModel:
             
             print("Starting initial marker detection phase...")
             while True:
-                ret, frame = cap.read()
+                frame = self.frame_capturer.capture_frame(OverviewCameraName)
+                if frame is None:
+                    print("Failed to capture frame during calibration")
+                    continue
                 
                 # Draw overlay
                 frame = self._draw_calibration_overlay(frame)
@@ -417,7 +432,7 @@ class SettingsModel:
             print("Starting multi-point calibration...")
             calibration_points = self._generate_calibration_points(calib_origin)
             robot_coords, camera_coords = self._perform_multi_point_calibration(
-                calibration_points, cap, detector
+                calibration_points, detector
             )
             
             # Compute transformation matrix

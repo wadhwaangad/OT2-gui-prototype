@@ -26,6 +26,7 @@ import Model.core as core
 import Model.globals as globals
 import Model.camera as camera
 import Model.utils as utils
+from Model.frame_capture import get_frame_capturer
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                            QPushButton, QGroupBox, QDialog, QDialogButtonBox)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
@@ -61,6 +62,10 @@ class TissuePickerFSM():
         self.keyboard_lock = threading.Lock()
         self.keyboard_hooks = []
         self.controller = controller  # Reference to MainController for camera access
+        
+        # Get frame capturer with controller's frame emitter if available
+        frame_emitter = controller.get_frame_emitter() if controller else None
+        self.frame_capturer = get_frame_capturer(frame_emitter)
 
         self.config = config
         self.routine = routine
@@ -271,15 +276,9 @@ class TissuePickerFSM():
 
         while self.paused and self.running:
             try:
-                # Use controller's cached camera frame method instead of direct read
-                if self.controller:
-                    ret, frame = self.controller.get_camera_frame_by_type("overview")
-                else:
-                    # Fallback for direct access (not recommended)
-                    over_cam = globals.active_cameras["HD USB CAMERA"]
-                    ret, frame = over_cam.read()
-                    
-                if not ret or frame is None:
+                # Use frame capturer instead of direct camera read
+                frame = self.frame_capturer.capture_frame("HD USB CAMERA")
+                if frame is None:
                     continue
                     
                 frame = globals.frame_ops.undistort_frame(frame)
@@ -299,15 +298,9 @@ class TissuePickerFSM():
         globals.robot_api.move_to_coordinates((self.calib_origin[0],self.calib_origin[1],115), min_z_height=self.config.dish_bottom, verbose=False)
         time.sleep(0.75)
         
-        # Use controller's cached camera frame method instead of direct read
-        if self.controller:
-            ret, frame = self.controller.get_camera_frame_by_type("overview")
-        else:
-            # Fallback for direct access (not recommended)
-            over_cam = globals.active_cameras["HD USB CAMERA"]
-            ret, frame = over_cam.read()
-            
-        if ret and frame is not None:
+        # Use frame capturer instead of direct camera read
+        frame = self.frame_capturer.capture_frame("HD USB CAMERA")
+        if frame is not None:
             self.current_frame = globals.frame_ops.undistort_frame(frame)
             self.state = RobotState.ANALYZE_FRAME
         else:
@@ -360,15 +353,9 @@ class TissuePickerFSM():
         globals.robot_api.move_to_coordinates((self.calib_origin[0],self.calib_origin[1],115), min_z_height=self.config.dish_bottom, verbose=False, force_direct=True)
         time.sleep(0.75)
         
-        # Use controller's cached camera frame method instead of direct read
-        if self.controller:
-            ret, frame = self.controller.get_camera_frame_by_type("overview")
-        else:
-            # Fallback for direct access (not recommended)
-            over_cam = globals.active_cameras["HD USB CAMERA"]
-            ret, frame = over_cam.read()
-            
-        if ret and frame is not None:
+        # Use frame capturer instead of direct camera read
+        frame = self.frame_capturer.capture_frame("HD USB CAMERA")
+        if frame is not None:
             self.current_frame = globals.frame_ops.undistort_frame(frame)
             self.cv_pipeline(self.current_frame)
         else:

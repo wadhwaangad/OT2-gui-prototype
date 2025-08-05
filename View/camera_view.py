@@ -3,6 +3,8 @@ Camera view for the microtissue manipulator GUI.
 """
 
 import cv2
+import numpy as np
+import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget, 
                            QListWidgetItem, QPushButton, QLabel, QSlider, 
                            QSpinBox, QGroupBox, QDialog, QDialogButtonBox,
@@ -150,6 +152,25 @@ class CameraTestWindow(QDialog):
 
         self.setLayout(layout)
 
+    def setup_timer(self):
+        """Connect to frame signals instead of using timer."""
+        # Connect to frame emitter signals
+        frame_emitter = self.controller.get_frame_emitter()
+        frame_emitter.frame_ready.connect(self.on_frame_received)
+
+    def on_frame_received(self, camera_name: str, frame):
+        """Handle incoming frame from signal."""
+        if camera_name == self.camera_name and self.is_capturing:
+            self.update_frame_display(frame)
+
+    def update_frame_display(self, frame):
+        """Update the video display with the given frame."""
+        if frame is not None:
+            # Apply rotation if needed
+            if self.rotation_angle != 0:
+                frame = self.rotate_frame(frame, self.rotation_angle)
+            self.video_display.set_frame(frame)
+
     def get_selected_resolution(self):
         if self.res_combo and self.res_combo.count() > 0:
             return self.res_combo.currentData()
@@ -163,32 +184,14 @@ class CameraTestWindow(QDialog):
         # If current value is above new max, adjust
         if self.focus_slider.value() > value:
             self.focus_slider.setValue(value)
-    
-    def setup_timer(self):
-        """Setup timer for video updates."""
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_frame)
-        self.timer.start(17)  # ~60 FPS
 
     def start_capture(self):
-        """Start camera capture."""
-        width, height = self.get_selected_resolution()
-        success = self.controller.start_camera_capture(
-            self.camera_name,
-            self.camera_index,
-            width=width,
-            height=height,
-            focus=self.focus_slider.value()
-        )
-        if success:
-            self.is_capturing = True
-            self.capture_btn.setText("Stop Capture")
-        else:
-            pass  # Backend handles error messaging
+        """Start camera capture - camera is already running, just enable display."""
+        self.is_capturing = True
+        self.capture_btn.setText("Stop Capture")
     
     def stop_capture(self):
-        """Stop camera capture."""
-        self.controller.stop_camera_capture(self.camera_name)
+        """Stop camera capture - just disable display, camera keeps running."""
         self.is_capturing = False
         self.capture_btn.setText("Start Capture")
         self.video_display.clear_frame()
@@ -199,6 +202,7 @@ class CameraTestWindow(QDialog):
             self.stop_capture()
         else:
             self.start_capture()
+    
     def rotate_feed(self):
         """Rotate the camera feed by 90 degrees clockwise."""
         self.rotation_angle = (self.rotation_angle + 90) % 360
@@ -209,14 +213,8 @@ class CameraTestWindow(QDialog):
             self.rotate_btn.setText(f"Rotate 90° ({self.rotation_angle}°)")
 
     def update_frame(self):
-        """Update the video frame."""
-        if self.is_capturing:
-            ret, frame = self.controller.get_camera_frame(self.camera_name)
-            if ret and frame is not None:
-                # Apply rotation if needed
-                if self.rotation_angle != 0:
-                    frame = self.rotate_frame(frame, self.rotation_angle)
-                self.video_display.set_frame(frame)
+        """Legacy method - no longer used with signal system."""
+        pass
 
     def rotate_frame(self, frame, angle):
         """Rotate frame by the specified angle."""
@@ -227,7 +225,6 @@ class CameraTestWindow(QDialog):
         elif angle == 270:
             return cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
         return frame
-    
     def on_focus_changed(self, value):
         """Handle focus slider changes."""
         self.focus_value_label.setText(str(value))
@@ -240,9 +237,13 @@ class CameraTestWindow(QDialog):
     
     def closeEvent(self, event):
         """Handle close event."""
-        self.timer.stop()
-        if self.is_capturing:
-            self.stop_capture()
+        # No need to stop camera capture as it continues running
+        # Just disconnect from signals
+        frame_emitter = self.controller.get_frame_emitter()
+        try:
+            frame_emitter.frame_ready.disconnect(self.on_frame_received)
+        except:
+            pass  # Ignore if already disconnected
         event.accept()
 
 
@@ -424,10 +425,15 @@ class CameraView(QWidget):
         return right_widget
     
     def setup_timer(self):
-        """Setup timer for video updates."""
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_embedded_display)
-        self.timer.start(33)  # ~30 FPS
+        """Connect to frame signals instead of using timer."""
+        # Connect to frame emitter signals
+        frame_emitter = self.controller.get_frame_emitter()
+        frame_emitter.frame_ready.connect(self.on_embedded_frame_received)
+    
+    def on_embedded_frame_received(self, camera_name: str, frame):
+        """Handle incoming frame from signal for embedded display."""
+        if camera_name in self.active_embedded_cameras:
+            self.update_embedded_display_frame(frame)
     
     def refresh_cameras(self):
         """Refresh the list of available cameras."""
@@ -539,41 +545,37 @@ class CameraView(QWidget):
     def start_embedded_camera(self, camera_name: str, camera_index: int):
         """Start a camera in embedded view."""
         try:
-            # Stop any currently active embedded camera
+            # Stop any currently active embedded camera display
             if self.active_embedded_cameras:
                 for active_name in list(self.active_embedded_cameras.keys()):
                     self.stop_embedded_camera(active_name)
-            # Get selected resolution
+            
+            # Get resolution
             if self.res_combo.isVisible() and self.res_combo.count() > 0:
                 width, height = self.res_combo.currentData()
             else:
                 width = self.custom_width.value()
                 height = self.custom_height.value()
-            # Start new camera
-            success = self.controller.start_camera_capture(
-                camera_name,
-                camera_index,
-                width=width,
-                height=height,
-                focus=self.focus_slider.value()
-            )
+            
+            # Start camera capture
+            success = self.controller.start_camera_capture(camera_name, camera_index, width, height)
             if success:
                 self.active_embedded_cameras[camera_name] = camera_index
                 self.active_camera_label.setText(f"Active: {camera_name}")
                 self.start_stop_btn.setText("Stop Camera")
                 self.focus_slider.setEnabled(True)
                 self.reset_view_btn.setEnabled(True)
-            else:
-                pass  # Backend handles error messaging
+                # Set initial focus
+                self.controller.set_camera_focus(camera_name, self.focus_slider.value())
         except Exception as e:
             pass  # Backend handles error messaging
     
     def stop_embedded_camera(self, camera_name: str):
-        """Stop an embedded camera."""
-        try:
-            self.controller.stop_camera_capture(camera_name)
-            
+        """Stop an embedded camera display and camera capture."""
+        try:            
             if camera_name in self.active_embedded_cameras:
+                # Stop camera capture
+                self.controller.stop_camera_capture(camera_name)
                 del self.active_embedded_cameras[camera_name]
             
             self.active_camera_label.setText("No active camera")
@@ -590,21 +592,21 @@ class CameraView(QWidget):
         for camera_name in list(self.active_embedded_cameras.keys()):
             self.stop_embedded_camera(camera_name)
         
-        # Close all test windows
-        for window in list(self.test_windows.values()):
+        # Close all test windows and stop their cameras
+        for camera_name, window in list(self.test_windows.items()):
             window.close()
-        
-        # Removed confirmation message - backend handles it
-    
+            # Stop camera capture if no other windows are using it
+            if camera_name not in self.active_embedded_cameras:
+                self.controller.stop_camera_capture(camera_name)
+
     def update_embedded_display(self):
-        """Update the embedded camera display."""
-        if self.active_embedded_cameras:
-            # Get the first (and should be only) active camera
-            camera_name = list(self.active_embedded_cameras.keys())[0]
-            ret, frame = self.controller.get_camera_frame(camera_name)
-            
-            if ret and frame is not None:
-                self.embedded_video_display.set_frame(frame)
+        """Legacy method - no longer used with signal system."""
+        pass
+
+    def update_embedded_display_frame(self, frame):
+        """Update the embedded camera display with the given frame."""
+        if frame is not None:
+            self.embedded_video_display.set_frame(frame)
     
     def on_focus_changed(self, value):
         """Handle focus slider changes."""
@@ -638,6 +640,19 @@ class CameraView(QWidget):
         if camera_name in self.test_windows:
             self.test_windows[camera_name].close()
         
+        # Get resolution
+        if self.res_combo.isVisible() and self.res_combo.count() > 0:
+            width, height = self.res_combo.currentData()
+        else:
+            width = self.custom_width.value()
+            height = self.custom_height.value()
+        
+        # Start camera capture if not already active
+        if not self.controller.is_camera_active(camera_name):
+            success = self.controller.start_camera_capture(camera_name, camera_index, width, height)
+            if not success:
+                return
+        
         # Create new test window
         test_window = CameraTestWindow(camera_name, camera_index, self.controller, self)
         test_window.show()
@@ -652,15 +667,7 @@ class CameraView(QWidget):
         """Handle test window closure."""
         if camera_name in self.test_windows:
             del self.test_windows[camera_name]
-    
-    def closeEvent(self, event):
-        """Handle close event."""
-        # Stop all embedded cameras
-        for camera_name in list(self.active_embedded_cameras.keys()):
-            self.stop_embedded_camera(camera_name)
         
-        # Close all test windows
-        for window in list(self.test_windows.values()):
-            window.close()
-        
-        event.accept()
+        # Stop camera capture if no embedded view is using it
+        if camera_name not in self.active_embedded_cameras:
+            self.controller.stop_camera_capture(camera_name)

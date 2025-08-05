@@ -7,6 +7,7 @@ from pygrabber.dshow_graph import FilterGraph
 import paths
 import json
 import os
+from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 
 CAMERA_LABELS_FILE = paths.CAM_CONFIGS_DIR + "/camera_labels.json"
 CAMERA_CONFIG_DIR = paths.CAM_CONFIGS_DIR
@@ -323,3 +324,37 @@ class frameOperations():
             return cv2.undistort(frame, self.camera_matrix, self.distortion_coefficients, newCameraMatrix=self.new_camera_matrix)
         else:
             return cv2.undistort(frame, self.camera_matrix, self.distortion_coefficients)
+
+
+class CameraFrameEmitter(QObject):
+    """
+    Emits camera frames via PyQt signals for all active cameras.
+    """
+    frame_ready = pyqtSignal(str, np.ndarray)  # camera_name, frame
+    
+    def __init__(self):
+        super().__init__()
+        self.active_cameras = {}
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.emit_frames)
+        self.timer.start(33)  # ~30 FPS emission rate
+    
+    def add_camera(self, camera_name: str, capture: MultiprocessVideoCapture):
+        """Add a camera to the frame emitter."""
+        self.active_cameras[camera_name] = capture
+    
+    def remove_camera(self, camera_name: str):
+        """Remove a camera from the frame emitter."""
+        if camera_name in self.active_cameras:
+            del self.active_cameras[camera_name]
+    
+    def emit_frames(self):
+        """Emit frames from all active cameras."""
+        for camera_name, capture in self.active_cameras.items():
+            ret, frame = capture.read()
+            if ret and frame is not None:
+                self.frame_ready.emit(camera_name, frame)
+    
+    def stop(self):
+        """Stop the frame emitter."""
+        self.timer.stop()

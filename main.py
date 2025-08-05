@@ -34,6 +34,16 @@ class MainWindow(QMainWindow):
         # Delay status timer start to allow full initialization
         QTimer.singleShot(2000, self.start_status_timer)  # Start after 2 seconds
     
+    def closeEvent(self, event):
+        """Handle application close event."""
+        try:
+            # Shutdown cameras before closing
+            self.controller.shutdown_cameras()
+            print("Application shutting down - cameras stopped")
+        except Exception as e:
+            print(f"Error during shutdown: {e}")
+        event.accept()
+    
     def setup_ui(self):
         """Setup the main user interface."""
         self.setWindowTitle("Microtissue Manipulator Control")

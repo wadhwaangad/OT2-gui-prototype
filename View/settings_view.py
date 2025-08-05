@@ -320,18 +320,9 @@ class SettingsView(QWidget):
                 overview_camera = (cam_name, camera_index, user_label)
         #         break
         if overview_camera:
-            cam_name, camera_index, user_label = overview_camera
-            success = self.controller.start_camera_capture(
-                cam_name,
-                camera_index,
-                width=default_res[0],
-                height=default_res[1]
-            )
-        if success:
             self.open_camera_calibration_window(cam_name, camera_index, user_label)
         else:
             pass 
-        time.sleep(1)
         self.controller.activate_keyboard_movement()
         self.controller.calibrate_camera(calibration_profile)
         

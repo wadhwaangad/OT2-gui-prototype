@@ -4,7 +4,7 @@ Manages communication between models and views.
 """
 
 from typing import Dict, Any, List, Optional
-from Model.camera import CameraManagerWindows, MultiprocessVideoCapture
+from Model.camera import CameraManagerWindows, MultiprocessVideoCapture, CameraFrameEmitter
 from Model.settings import SettingsModel
 from Model.labware import LabwareModel
 import sys
@@ -15,20 +15,25 @@ from paths import CAM_CONFIGS_DIR
 from Model.manual_movement import ManualMovementModel
 import Model.globals as globals
 import time
+from PyQt6.QtCore import QObject
 
 
-class MainController:
+class MainController(QObject):
     """Main controller that coordinates between models and views."""
     
     def __init__(self):
-        # Initialize models
+        super().__init__()
+        # Initialize frame emitter for camera signals first
+        self.frame_emitter = CameraFrameEmitter()
+        
+        # Initialize models with frame emitter
         self.camera_manager = CameraManagerWindows()
         self.settings_model = SettingsModel()
         self.labware_model = LabwareModel()
         self.manual_movement_model = ManualMovementModel()
         
-        # Active camera captures
-        
+        # Set frame emitter for models that need it
+        self._inject_frame_emitter_dependencies()
         
         # View references (will be set by the main view)
         self.main_view = None
@@ -37,6 +42,22 @@ class MainController:
         self.camera_view = None
         self.manual_movement_view = None
         self.wellplate_view = None
+        
+    def _inject_frame_emitter_dependencies(self):
+        """Inject frame emitter into models that need it."""
+        # Update frame capturer instances in models
+        if hasattr(self.labware_model, 'frame_capturer'):
+            self.labware_model.frame_capturer.set_frame_emitter(self.frame_emitter)
+        if hasattr(self.settings_model, 'frame_capturer'):
+            self.settings_model.frame_capturer.set_frame_emitter(self.frame_emitter)
+        if hasattr(self.manual_movement_model, 'frame_capturer'):
+            self.manual_movement_model.frame_capturer.set_frame_emitter(self.frame_emitter)
+    
+    def update_frame_emitter_for_model(self, model):
+        """Update frame emitter for a specific model that has frame_capturer."""
+        if hasattr(model, 'frame_capturer'):
+            model.frame_capturer.set_frame_emitter(self.frame_emitter)
+        
     
     def set_views(self, main_view, settings_view, labware_view, camera_view, wellplate_view=None):
         """Set references to view components."""
@@ -50,6 +71,46 @@ class MainController:
     def set_status_widget(self, status_widget):
         """Set reference to the universal status widget."""
         self.status_widget = status_widget
+    
+    def auto_start_cameras(self):
+        """Auto-start all available cameras on app initialization."""
+        try:
+            cameras = self.get_available_cameras()
+            for camera_info in cameras:
+                if len(camera_info) >= 4:
+                    user_label, cam_index, cam_name, default_res = camera_info
+                else:
+                    user_label, cam_index, cam_name = camera_info[:3]
+                    default_res = None
+                
+                # Use default resolution if available, otherwise fallback
+                if default_res and len(default_res) == 2:
+                    width, height = default_res
+                else:
+                    width, height = 640, 480
+                
+                print(f"Starting camera: {user_label} (Index: {cam_index})")
+                success = self.start_camera_capture(user_label, cam_index, width, height)
+                if success:
+                    print(f"Successfully started camera: {user_label}")
+                else:
+                    print(f"Failed to start camera: {user_label}")
+        except Exception as e:
+            print(f"Error auto-starting cameras: {e}")
+    
+    def get_frame_emitter(self):
+        """Get the frame emitter for signal connections."""
+        return self.frame_emitter
+    
+    def shutdown_cameras(self):
+        """Shutdown all cameras when app closes."""
+        try:
+            self.frame_emitter.stop()
+            for camera_name in list(globals.active_cameras.keys()):
+                self.stop_camera_capture(camera_name)
+            print("All cameras shut down successfully")
+        except Exception as e:
+            print(f"Error shutting down cameras: {e}")
     
     # Camera control methods
     def get_available_cameras(self) -> List[tuple]:
@@ -131,6 +192,10 @@ class MainController:
 
             capture = MultiprocessVideoCapture(camera_index, width, height, focus=focus)
             globals.active_cameras[camera_name] = capture
+            
+            # Add camera to frame emitter
+            self.frame_emitter.add_camera(camera_name, capture)
+            
             return True
         except Exception as e:
             print(f"Error starting camera capture: {e}")
@@ -140,6 +205,9 @@ class MainController:
         """Stop capturing from a specific camera."""
         try:
             if camera_name in globals.active_cameras:
+                # Remove from frame emitter first
+                self.frame_emitter.remove_camera(camera_name)
+                
                 camera = globals.active_cameras[camera_name]
                 try:
                     camera.release()
@@ -208,6 +276,22 @@ class MainController:
 
     def calibrate_camera(self, calibration_profile, on_result=None, on_error=None, on_finished=None):
         """Calibrate the camera in a thread."""
+        cameras = self.get_available_cameras()
+        # Look for overview camera first
+        overview_camera = None
+        for camera_data in cameras:
+            user_label, camera_index, cam_name, default_res = camera_data
+            if "overview_cam" in user_label.lower():
+                overview_camera = (cam_name, camera_index, user_label, default_res)
+        if overview_camera:
+            cam_name, camera_index, user_label, default_res = overview_camera
+            success = self.start_camera_capture(
+                cam_name,
+                camera_index,
+                width=default_res[0],
+                height=default_res[1]
+            )
+        time.sleep(1)
         return self.settings_model.run_in_thread(self.settings_model.calibrate_camera, calibration_profile, on_result=on_result, on_error=on_error, on_finished=on_finished)
         #self.settings_model.calibrate_camera(calibration_profile)
     def get_calibration_frame(self):
@@ -521,6 +605,10 @@ class MainController:
     def cleanup(self):
         """Cleanup resources when closing application."""
         try:
+            # Stop frame emitter first
+            if hasattr(self, 'frame_emitter'):
+                self.frame_emitter.stop()
+            
             # Stop all active cameras
             camera_names = list(globals.active_cameras.keys())
             for camera_name in camera_names:
@@ -528,12 +616,6 @@ class MainController:
                     self.stop_camera_capture(camera_name)
                 except Exception as e:
                     print(f"Error stopping camera {camera_name}: {e}")
-
-            # Save labware configuration
-            try:
-                self.labware_model.save_labware_config()
-            except Exception as e:
-                print(f"Error saving labware config: {e}")
         
             print("Application cleanup completed")
         except Exception as e:

@@ -11,14 +11,16 @@ import paths
 import requests
 from PyQt6.QtCore import QThread
 from Model.worker import Worker
+from Model.frame_capture import get_frame_capturer
 import cv2
 import Model.utils as utils
 import time
 import numpy as np
-from ultralytics import YOLO
+from ultralytics import YOLO    
 import pandas as pd
 OverviewCameraName = "HD USB CAMERA"
 UnderviewCameraName = "Arducam B0478 (USB3 48MP)"
+
 class LabwareModel:
     """Model for handling labware declarations and configurations."""
     
@@ -29,6 +31,8 @@ class LabwareModel:
         
         self.available_labware = self.get_available_labware()
         self.active_threads = []
+        # Frame capturer will be initialized with proper frame emitter later
+        self.frame_capturer = get_frame_capturer()
 
     def run_in_thread(self, fn, *args, on_result=None, on_error=None, on_finished=None, **kwargs):
         """Run a function in a separate thread using Worker."""
@@ -318,7 +322,7 @@ class LabwareModel:
         if not current_status['on']:
             globals.robot_api.toggle_lights()
 
-    def _load_calibration_resources(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Any, Any, Any]:
+    def _load_calibration_resources(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Any]:
         """Load calibration data, model, and cameras."""
         # Load calibration data
         calibration_data = utils.load_calibration_config(globals.calibration_profile)
@@ -330,11 +334,7 @@ class LabwareModel:
         model_path = os.path.join(paths.ML_MODELS_DIR, 'tip_detector_v1.pt')
         model = YOLO(model_path)
         
-        # Get cameras
-        over_cam = globals.active_cameras[OverviewCameraName]
-        under_cam = globals.active_cameras[UnderviewCameraName]
-        
-        return tf_mtx, calib_origin, offset, model, over_cam, under_cam
+        return tf_mtx, calib_origin, offset, model
 
     def _predict_objects(self, model: Any, image: np.ndarray) -> List[Dict[str, Any]]:
         """Run YOLO prediction on image and extract object data."""
@@ -448,11 +448,11 @@ class LabwareModel:
         
         return x_dist_to_tip_mm, y_dist_to_tip_mm
 
-    def _capture_verification_frame(self, under_cam: Any) -> np.ndarray:
+    def _capture_verification_frame(self) -> np.ndarray:
         """Capture verification frame from under camera."""
         time.sleep(0.5)
-        ret, verification_frame = under_cam.read()
-        if not ret:
+        verification_frame = self.frame_capturer.capture_frame(UnderviewCameraName)
+        if verification_frame is None:
             raise AssertionError("Failed to capture verification frame from under_cam.")
         time.sleep(0.5)
         return verification_frame
@@ -474,7 +474,7 @@ class LabwareModel:
             
             # Step 1: Setup
             self._ensure_lights_on()
-            tf_mtx, calib_origin, offset, model, over_cam, under_cam = self._load_calibration_resources()
+            tf_mtx, calib_origin, offset, model = self._load_calibration_resources()
             calibration_data = utils.load_calibration_config(globals.calibration_profile)
             
             # Step 2: Move to calibration module
@@ -486,8 +486,8 @@ class LabwareModel:
             time.sleep(1)
 
             # Step 3: Capture and analyze overview camera image
-            ret, frame = over_cam.read()
-            if not ret:
+            frame = self.frame_capturer.capture_frame(OverviewCameraName)
+            if frame is None:
                 raise AssertionError("Failed to capture frame from overview camera.")
                 
             image = frame.copy()[..., ::-1]  # Convert BGR to RGB
@@ -520,8 +520,8 @@ class LabwareModel:
             time.sleep(1)
 
             # Step 5: Capture and analyze underview camera image
-            ret, under_frame = under_cam.read()
-            if not ret:
+            under_frame = self.frame_capturer.capture_frame(UnderviewCameraName)
+            if under_frame is None:
                 raise AssertionError("Failed to capture frame from underview camera.")
                 
             under_image = under_frame[..., ::-1]  # Convert BGR to RGB
@@ -551,7 +551,7 @@ class LabwareModel:
             globals.robot_api.move_relative('y', y_dist_to_tip_mm, verbose=False)
 
             # Step 8: Capture verification frame
-            verification_frame = self._capture_verification_frame(under_cam)
+            verification_frame = self._capture_verification_frame()
             globals.tip_calibration_frame = verification_frame
 
             # Step 9: Update calibration data
