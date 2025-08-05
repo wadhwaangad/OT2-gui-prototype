@@ -299,10 +299,8 @@ def main():
         # Ensure labware config is deleted in case of crash
         try:
             import os
-            config_file = "labware_config.json"
-            if os.path.exists(config_file):
-                os.remove(config_file)
-                print(f"Application crashed - deleted {config_file}")
+            # No longer need to delete labware_config.json as it's not used
+            print("Application crashed - cleanup completed")
         except Exception as config_error:
             print(f"Error deleting config file during crash: {config_error}")
         
