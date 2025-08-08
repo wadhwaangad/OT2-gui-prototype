@@ -364,6 +364,47 @@ class SettingsModel:
         
         return utils.compute_tf_mtx(robot_to_camera_coords)
 
+    def _cleanup_calibration_cameras(self) -> None:
+        """Clean up camera resources used during calibration to prevent conflicts."""
+        try:
+            # Camera used in camera calibration (only overview camera)
+            cameras_to_cleanup = [OverviewCameraName]
+            
+            # Get the frame emitter from the frame capturer
+            if self.frame_capturer and self.frame_capturer.frame_emitter:
+                frame_emitter = self.frame_capturer.frame_emitter
+                
+                for camera_name in cameras_to_cleanup:
+                    try:
+                        if camera_name in globals.active_cameras:
+                            print(f"Cleaning up camera: {camera_name}")
+                            
+                            # Remove from frame emitter first
+                            frame_emitter.remove_camera(camera_name)
+                            
+                            # Release the camera
+                            camera = globals.active_cameras[camera_name]
+                            try:
+                                camera.release()
+                            except Exception as e:
+                                print(f"Error releasing camera {camera_name}: {e}")
+                            finally:
+                                # Always remove from the active cameras dictionary
+                                del globals.active_cameras[camera_name]
+                                
+                    except Exception as e:
+                        print(f"Warning: Error cleaning up camera {camera_name}: {e}")
+                
+                print("Camera calibration cleanup completed")
+            else:
+                print("Warning: Could not access frame emitter for camera cleanup")
+                
+            # Additional safety: ensure cameras are not in any leftover state
+            time.sleep(0.1)  # Small delay to ensure cleanup is complete
+                
+        except Exception as e:
+            print(f"Warning: Error during camera cleanup: {e}")
+
     def calibrate_camera(self, calibration_profile) -> bool:
         """Calibrate the camera using ArUco markers."""
         if not globals.robot_initialized:
@@ -396,6 +437,8 @@ class SettingsModel:
             
             print("Starting initial marker detection phase...")
             while True:
+                if globals.calibration_active is False:
+                    return False
                 frame = self.frame_capturer.capture_frame(OverviewCameraName)
                 if frame is None:
                     print("Failed to capture frame during calibration")
@@ -441,13 +484,25 @@ class SettingsModel:
                 calibration_data['tf_mtx'] = tf_mtx.tolist()
                 utils.save_calibration_config(calibration_profile, calibration_data)
                 print("Camera calibration completed successfully!")
+                # Reset calibration state
+                globals.calibration_active = False
+                # Clean up any camera resources used during calibration
+                self._cleanup_calibration_cameras()
                 return True
             else:
                 print("Insufficient calibration points collected.")
+                # Reset calibration state
+                globals.calibration_active = False
+                # Clean up any camera resources even on failure
+                self._cleanup_calibration_cameras()
                 return False
             
         except Exception as e:
             print(f"Error in calibrating camera: {e}")
+            # Reset calibration state
+            globals.calibration_active = False
+            # Clean up any camera resources even on error
+            self._cleanup_calibration_cameras()
             return False
     
     def placeholder_function_2(self) -> bool:

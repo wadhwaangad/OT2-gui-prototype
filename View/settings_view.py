@@ -389,7 +389,7 @@ class CameraCalibrationWindow(QDialog):
 
         # Button box
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        button_box.rejected.connect(self.close)
+        button_box.rejected.connect(self.accept)  # Change from self.close() to self.accept()
 
         # Add to main layout
         layout.addLayout(info_layout)
@@ -411,10 +411,19 @@ class CameraCalibrationWindow(QDialog):
     
     def closeEvent(self, event):
         """Handle window close event."""
+        self._cleanup_camera()
+        event.accept()
+    
+    def accept(self):
+        """Handle dialog acceptance (Close button)."""
+        self._cleanup_camera()
+        super().accept()
+    
+    def _cleanup_camera(self):
+        """Centralized camera cleanup."""
         # Stop the update timer when closing
-        if hasattr(self, 'update_timer'):
+        if hasattr(self, 'update_timer') and self.update_timer.isActive():
             self.update_timer.stop()
         globals.calibration_active = False
-        self.controller.stop_camera_capture(self.camera_name)
         self.controller.deactivate_keyboard_movement()
-        event.accept()
+        self.controller.stop_camera_capture(self.camera_name)

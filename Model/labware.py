@@ -391,7 +391,7 @@ class LabwareModel:
         print(f"Robot coords: ({x}, {y})")
         print(f"Target coords: ({X}, {Y})")
         
-        return X + detection_offset_x, Y + detection_offset_y
+        return X + detection_offset_x, Y + detection_offset_y, diff
 
     def _analyze_tip_position(self, df: pd.DataFrame, image_center: Tuple[int, int]) -> Tuple[float, float]:
         """Analyze tip position relative to calibration points."""
@@ -457,6 +457,54 @@ class LabwareModel:
         time.sleep(0.5)
         return verification_frame
 
+    def _cleanup_calibration_cameras(self) -> None:
+        """Clean up camera resources used during calibration to prevent conflicts."""
+        try:
+            # Cameras used in tip calibration
+            cameras_to_cleanup = [OverviewCameraName, UnderviewCameraName]
+            
+            for camera_name in cameras_to_cleanup:
+                try:
+                    if camera_name in globals.active_cameras:
+                        print(f"Cleaning up camera: {camera_name}")
+                        
+                        # Get the frame emitter from the frame capturer
+                        if self.frame_capturer and hasattr(self.frame_capturer, 'frame_emitter') and self.frame_capturer.frame_emitter:
+                            try:
+                                # Remove from frame emitter first
+                                self.frame_capturer.frame_emitter.remove_camera(camera_name)
+                            except Exception as e:
+                                print(f"Warning: Error removing {camera_name} from frame emitter: {e}")
+                        
+                        # Release the camera
+                        camera = globals.active_cameras[camera_name]
+                        if camera is not None:
+                            try:
+                                camera.release()
+                            except Exception as e:
+                                print(f"Warning: Error releasing camera {camera_name}: {e}")
+                        
+                        # Always remove from the active cameras dictionary
+                        try:
+                            del globals.active_cameras[camera_name]
+                        except KeyError:
+                            pass  # Already removed
+                            
+                except Exception as e:
+                    print(f"Warning: Error cleaning up camera {camera_name}: {e}")
+                    # Continue with next camera
+                    continue
+            
+            print("Camera cleanup completed")
+            
+            # Additional safety: ensure cameras are not in any leftover state
+            # This helps prevent conflicts when opening camera view later
+            time.sleep(0.2)  # Small delay to ensure cleanup is complete
+                
+        except Exception as e:
+            print(f"Warning: Error during camera cleanup: {e}")
+            # Don't re-raise the exception to prevent unhandled exceptions
+
     def calibrate_tip(self) -> bool:
         """
         Calibrate tip position using computer vision and robot positioning.
@@ -507,7 +555,7 @@ class LabwareModel:
             crosshair_x, crosshair_y = closest_obj['center_x'], closest_obj['center_y']
 
             # Step 4: Calculate and move to target coordinates
-            target_x, target_y = self._calculate_robot_coordinates(
+            target_x, target_y, diff = self._calculate_robot_coordinates(
                 crosshair_x, crosshair_y, tf_mtx, calibration_data, 
                 DETECTION_OFFSET_X, DETECTION_OFFSET_Y
             )
@@ -560,14 +608,22 @@ class LabwareModel:
             
             # Calculate new offset based on current position
             X_init, Y_init, _ = tf_mtx @ (crosshair_x, crosshair_y, 1)
-            current_diff = np.array([current_x, current_y]) - np.array(calibration_data['calib_origin'])[:2]
-            calibration_data['offset'] = [current_x - (X_init + current_diff[0]), 
-                                        current_y - (Y_init + current_diff[1])]
-            
+            calibration_data['offset'] = [current_x - (X_init + diff[0]), 
+                                        current_y - (Y_init + diff[1])]
+
             utils.save_calibration_config(globals.calibration_profile, calibration_data)
 
             # Step 10: Retract and finish
             globals.robot_api.retract_axis('leftZ')
+            
+            # Small delay to ensure all camera operations are completed
+            time.sleep(0.5)
+            
+            # Step 11: Clean up camera resources to prevent conflicts
+            try:
+                self._cleanup_calibration_cameras()
+            except Exception as cleanup_error:
+                print(f"Warning: Camera cleanup failed but continuing: {cleanup_error}")
             
             print("Tip calibration completed successfully.")
             return True
@@ -579,4 +635,11 @@ class LabwareModel:
                 globals.robot_api.retract_axis('leftZ')
             except:
                 pass
+            # Small delay before cleanup
+            time.sleep(0.5)
+            # Clean up camera resources even on failure
+            try:
+                self._cleanup_calibration_cameras()
+            except Exception as cleanup_error:
+                print(f"Warning: Camera cleanup failed: {cleanup_error}")
             return False    
