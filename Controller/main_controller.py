@@ -232,6 +232,7 @@ class MainController(QObject):
         try:
             if camera_name in globals.active_cameras:
                 globals.active_cameras[camera_name].set_focus(focus_value)
+                globals.default_focus = focus_value
                 return True
             return False
         except Exception as e:
@@ -439,7 +440,8 @@ class MainController(QObject):
                 cam_name,
                 camera_index,
                 width=default_res[0],
-                height=default_res[1]
+                height=default_res[1],
+                focus = globals.default_focus
             )
         time.sleep(2)
         thread = self.labware_model.run_in_thread(

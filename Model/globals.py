@@ -33,3 +33,4 @@ if "HD USB CAMERA" in active_cameras and active_cameras["HD USB CAMERA"] is not 
     frame_ops = frameOperations(*active_cameras["HD USB CAMERA"].shape[0:-1])
 else:
     frame_ops = None
+default_focus = 900
