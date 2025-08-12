@@ -186,15 +186,25 @@ class CameraTestWindow(QDialog):
             self.focus_slider.setValue(value)
 
     def start_capture(self):
-        """Start camera capture - camera is already running, just enable display."""
-        self.is_capturing = True
-        self.capture_btn.setText("Stop Capture")
+        """Start camera capture."""
+        # Get current resolution
+        width, height = self.get_selected_resolution()
+        
+        # Start camera capture
+        success = self.controller.start_camera_capture(self.camera_name, self.camera_index, width, height)
+        if success:
+            self.is_capturing = True
+            self.capture_btn.setText("Stop Capture")
+            # Set focus to current slider value
+            self.controller.set_camera_focus(self.camera_name, self.focus_slider.value())
     
     def stop_capture(self):
-        """Stop camera capture - just disable display, camera keeps running."""
+        """Stop camera capture completely."""
         self.is_capturing = False
         self.capture_btn.setText("Start Capture")
         self.video_display.clear_frame()
+        # Actually stop the camera capture
+        self.controller.stop_camera_capture(self.camera_name)
     
     def toggle_capture(self):
         """Toggle camera capture."""
@@ -237,8 +247,9 @@ class CameraTestWindow(QDialog):
     
     def closeEvent(self, event):
         """Handle close event."""
-        # No need to stop camera capture as it continues running
-        # Just disconnect from signals
+        # Stop camera capture when window is closed
+        self.controller.stop_camera_capture(self.camera_name)
+        # Disconnect from signals
         frame_emitter = self.controller.get_frame_emitter()
         try:
             frame_emitter.frame_ready.disconnect(self.on_frame_received)
@@ -592,12 +603,9 @@ class CameraView(QWidget):
         for camera_name in list(self.active_embedded_cameras.keys()):
             self.stop_embedded_camera(camera_name)
         
-        # Close all test windows and stop their cameras
+        # Close all test windows (they will stop their own cameras)
         for camera_name, window in list(self.test_windows.items()):
             window.close()
-            # Stop camera capture if no other windows are using it
-            if camera_name not in self.active_embedded_cameras:
-                self.controller.stop_camera_capture(camera_name)
 
     def update_embedded_display(self):
         """Legacy method - no longer used with signal system."""
@@ -668,6 +676,5 @@ class CameraView(QWidget):
         if camera_name in self.test_windows:
             del self.test_windows[camera_name]
         
-        # Stop camera capture if no embedded view is using it
-        if camera_name not in self.active_embedded_cameras:
-            self.controller.stop_camera_capture(camera_name)
+        # Camera capture is already stopped by the test window's closeEvent
+        # No additional action needed here since the window handles its own cleanup

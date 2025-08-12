@@ -367,41 +367,34 @@ class SettingsModel:
     def _cleanup_calibration_cameras(self) -> None:
         """Clean up camera resources used during calibration to prevent conflicts."""
         try:
-            # Camera used in camera calibration (only overview camera)
-            cameras_to_cleanup = [OverviewCameraName]
+            # Get a copy of all active cameras to avoid dictionary modification during iteration
+            cameras_to_cleanup = list(globals.active_cameras.keys())
             
             # Get the frame emitter from the frame capturer
-            if self.frame_capturer and self.frame_capturer.frame_emitter:
+            if self.frame_capturer and hasattr(self.frame_capturer, 'frame_emitter') and self.frame_capturer.frame_emitter:
                 frame_emitter = self.frame_capturer.frame_emitter
                 
                 for camera_name in cameras_to_cleanup:
                     try:
-                        if camera_name in globals.active_cameras:
-                            print(f"Cleaning up camera: {camera_name}")
+                        print(f"Cleaning up camera: {camera_name}")
+                        
+                        # Remove from frame emitter first
+                        frame_emitter.remove_camera(camera_name)
+                        
+                        # Release the camera
+                        camera = globals.active_cameras[camera_name]
+                        try:
+                            camera.release()
+                        except Exception as e:
+                            print(f"Error releasing camera {camera_name}: {e}")
+                        finally:
+                            # Always remove from the active cameras dictionary
+                            del globals.active_cameras[camera_name]
                             
-                            # Remove from frame emitter first
-                            frame_emitter.remove_camera(camera_name)
-                            
-                            # Release the camera
-                            camera = globals.active_cameras[camera_name]
-                            try:
-                                camera.release()
-                            except Exception as e:
-                                print(f"Error releasing camera {camera_name}: {e}")
-                            finally:
-                                # Always remove from the active cameras dictionary
-                                del globals.active_cameras[camera_name]
-                                
                     except Exception as e:
                         print(f"Warning: Error cleaning up camera {camera_name}: {e}")
-                
-                print("Camera calibration cleanup completed")
-            else:
-                print("Warning: Could not access frame emitter for camera cleanup")
-                
-            # Additional safety: ensure cameras are not in any leftover state
-            time.sleep(0.1)  # Small delay to ensure cleanup is complete
-                
+            
+            print("Camera calibration cleanup completed")
         except Exception as e:
             print(f"Warning: Error during camera cleanup: {e}")
 
@@ -530,6 +523,5 @@ class SettingsModel:
     def get_lights_status(self) -> bool:
         """Get current lights status."""
         return self.lights_on
-    
 
-    
+

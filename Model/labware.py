@@ -460,36 +460,35 @@ class LabwareModel:
     def _cleanup_calibration_cameras(self) -> None:
         """Clean up camera resources used during calibration to prevent conflicts."""
         try:
-            # Cameras used in tip calibration
-            cameras_to_cleanup = [OverviewCameraName, UnderviewCameraName]
+            # Get a copy of active cameras to avoid dictionary modification during iteration
+            cameras_to_cleanup = list(globals.active_cameras.keys())
             
             for camera_name in cameras_to_cleanup:
                 try:
-                    if camera_name in globals.active_cameras:
-                        print(f"Cleaning up camera: {camera_name}")
-                        
-                        # Get the frame emitter from the frame capturer
-                        if self.frame_capturer and hasattr(self.frame_capturer, 'frame_emitter') and self.frame_capturer.frame_emitter:
-                            try:
-                                # Remove from frame emitter first
-                                self.frame_capturer.frame_emitter.remove_camera(camera_name)
-                            except Exception as e:
-                                print(f"Warning: Error removing {camera_name} from frame emitter: {e}")
-                        
-                        # Release the camera
-                        camera = globals.active_cameras[camera_name]
-                        if camera is not None:
-                            try:
-                                camera.release()
-                            except Exception as e:
-                                print(f"Warning: Error releasing camera {camera_name}: {e}")
-                        
-                        # Always remove from the active cameras dictionary
+                    print(f"Cleaning up camera: {camera_name}")
+                    
+                    # Get the frame emitter from the frame capturer
+                    if self.frame_capturer and hasattr(self.frame_capturer, 'frame_emitter') and self.frame_capturer.frame_emitter:
                         try:
-                            del globals.active_cameras[camera_name]
-                        except KeyError:
-                            pass  # Already removed
-                            
+                            # Remove from frame emitter first
+                            self.frame_capturer.frame_emitter.remove_camera(camera_name)
+                        except Exception as e:
+                            print(f"Warning: Error removing {camera_name} from frame emitter: {e}")
+                    
+                    # Release the camera
+                    camera = globals.active_cameras[camera_name]
+                    if camera is not None:
+                        try:
+                            camera.release()
+                        except Exception as e:
+                            print(f"Warning: Error releasing camera {camera_name}: {e}")
+                    
+                    # Always remove from the active cameras dictionary
+                    try:
+                        del globals.active_cameras[camera_name]
+                    except KeyError:
+                        pass  # Already removed
+                        
                 except Exception as e:
                     print(f"Warning: Error cleaning up camera {camera_name}: {e}")
                     # Continue with next camera
@@ -642,4 +641,4 @@ class LabwareModel:
                 self._cleanup_calibration_cameras()
             except Exception as cleanup_error:
                 print(f"Warning: Camera cleanup failed: {cleanup_error}")
-            return False    
+            return False
