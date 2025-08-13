@@ -21,7 +21,7 @@ import keyboard
 import time
 
 # Camera name constants - using user labels that match controller
-OverviewCameraName = "overview_cam"  # User label for overview camera
+OverviewCameraName = "HD USB CAMERA"  # User label for overview camera
 
 class SettingsModel:
     """Model for handling settings and robot control operations."""

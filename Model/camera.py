@@ -282,7 +282,7 @@ class CaptureWorker(QObject):
             camera_opened = False
             for backend in backends_to_try:
                 try:
-                    self.cap = cv2.VideoCapture(self.camera_id, backend)
+                    self.cap = cv2.VideoCapture(self.camera_id)
                     if self.cap.isOpened():
                         print(f"Successfully opened camera with backend: {backend}")
                         camera_opened = True
