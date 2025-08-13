@@ -273,30 +273,95 @@ class CaptureWorker(QObject):
         """Start capturing frames."""
         try:
             print(f"Attempting to open camera at index {self.camera_id}")
-            self.cap = cv2.VideoCapture(self.camera_id)
             
-            # Check if camera opened successfully
-            if not self.cap.isOpened():
-                error_msg = f"Could not open camera {self.camera_id} - camera may be in use or index is invalid"
+            # Try different backends in order of preference for Windows
+            backends_to_try = [
+                cv2.CAP_DSHOW,    # DirectShow (default on Windows)
+                cv2.CAP_MSMF,     # Microsoft Media Foundation
+                cv2.CAP_ANY       # Auto-detect
+            ]
+            
+            camera_opened = False
+            for backend in backends_to_try:
+                try:
+                    self.cap = cv2.VideoCapture(self.camera_id, backend)
+                    if self.cap.isOpened():
+                        print(f"Successfully opened camera with backend: {backend}")
+                        camera_opened = True
+                        break
+                    else:
+                        print(f"Failed to open camera with backend: {backend}")
+                        if self.cap:
+                            self.cap.release()
+                except Exception as e:
+                    print(f"Exception with backend {backend}: {e}")
+                    if self.cap:
+                        self.cap.release()
+            
+            if not camera_opened:
+                error_msg = f"Could not open camera {self.camera_id} with any backend - camera may be in use or index is invalid"
                 print(error_msg)
                 self.error_occurred.emit(error_msg)
                 self.finished.emit()
                 return
             
-            # Test if we can actually read from the camera
-            test_ret, test_frame = self.cap.read()
-            if not test_ret:
-                error_msg = f"Camera {self.camera_id} opened but cannot read frames - camera may be in use"
-                print(error_msg)
-                self.cap.release()
-                self.error_occurred.emit(error_msg)
-                self.finished.emit()
-                return
-                
-            # Set properties
+            # Set properties before initial test
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             self.cap.set(cv2.CAP_PROP_FPS, self.fps)
+            
+            # Verify the resolution was actually set
+            actual_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            actual_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            if actual_width != self.width or actual_height != self.height:
+                print(f"Warning: Requested resolution {self.width}x{self.height} not available, using {actual_width}x{actual_height}")
+                self.width = actual_width
+                self.height = actual_height
+            
+            # Test if we can actually read from the camera with multiple attempts
+            test_attempts = 3
+            test_successful = False
+            
+            for attempt in range(test_attempts):
+                test_ret, test_frame = self.cap.read()
+                if test_ret and test_frame is not None and test_frame.size > 0:
+                    # Additional validation
+                    if len(test_frame.shape) >= 2 and test_frame.shape[0] > 0 and test_frame.shape[1] > 0:
+                        test_successful = True
+                        break
+                    else:
+                        print(f"Test frame has invalid dimensions: {test_frame.shape}")
+                else:
+                    print(f"Test read attempt {attempt + 1} failed")
+                
+                # Short delay before retry
+                time.sleep(0.1)
+            
+            if not test_successful:
+                # Try fallback to a lower resolution
+                fallback_resolutions = [(640, 480), (320, 240)]
+                for fb_width, fb_height in fallback_resolutions:
+                    print(f"Trying fallback resolution: {fb_width}x{fb_height}")
+                    self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, fb_width)
+                    self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, fb_height)
+                    
+                    test_ret, test_frame = self.cap.read()
+                    if test_ret and test_frame is not None and test_frame.size > 0:
+                        if len(test_frame.shape) >= 2 and test_frame.shape[0] > 0 and test_frame.shape[1] > 0:
+                            self.width = fb_width
+                            self.height = fb_height
+                            print(f"Successfully fell back to resolution: {self.width}x{self.height}")
+                            test_successful = True
+                            break
+                
+                if not test_successful:
+                    error_msg = f"Camera {self.camera_id} opened but cannot read valid frames - tried multiple resolutions"
+                    print(error_msg)
+                    self.cap.release()
+                    self.error_occurred.emit(error_msg)
+                    self.finished.emit()
+                    return
             if self.focus is not None:
                 self.cap.set(cv2.CAP_PROP_FOCUS, self.focus)
             
@@ -327,9 +392,21 @@ class CaptureWorker(QObject):
                 if self.should_stop:
                     break
                 
-                # Ensure frame size matches expected dimensions
-                if frame.shape[:2] != (self.height, self.width):
-                    frame = cv2.resize(frame, (self.width, self.height))
+                # Validate frame before processing
+                if frame is None or frame.size == 0:
+                    if not self.should_stop:
+                        self.error_occurred.emit(f"Camera {self.camera_id} returned empty frame")
+                    break
+                
+                # Additional validation for frame dimensions and data integrity
+                if len(frame.shape) < 2 or frame.shape[0] == 0 or frame.shape[1] == 0:
+                    if not self.should_stop:
+                        self.error_occurred.emit(f"Camera {self.camera_id} returned invalid frame dimensions: {frame.shape}")
+                    break
+                
+                # Check if frame is contiguous in memory (required for proper OpenCV operations)
+                if not frame.flags['C_CONTIGUOUS']:
+                    frame = np.ascontiguousarray(frame)
                 
                 self.frame_captured.emit(frame)
                 
@@ -345,6 +422,12 @@ class CaptureWorker(QObject):
                             break
                         time.sleep(chunk_time)
                     
+        except cv2.error as cv_e:
+            error_msg = f"OpenCV error in capture for camera {self.camera_id}: {str(cv_e)}"
+            if "_step >= minstep" in str(cv_e):
+                error_msg += "\nThis error is typically caused by incompatible frame format or resolution. Try using a lower resolution."
+            print(error_msg)
+            self.error_occurred.emit(error_msg)
         except Exception as e:
             error_msg = f"Exception in capture for camera {self.camera_id}: {str(e)}"
             print(error_msg)
