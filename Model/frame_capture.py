@@ -36,13 +36,19 @@ class FrameCapturer(QObject):
             print("Controller not available")
             return None
         
+        print(f"FrameCapturer: Attempting to capture frame from camera: {camera_name}")
+        print(f"FrameCapturer: Available active cameras: {self.controller.get_active_camera_names()}")
+        
         # Create a temporary camera viewer
         camera_viewer = self.controller.create_camera_viewer(camera_name)
         
         # Try to get current frame first (faster)
         ret, frame = camera_viewer.get_current_frame()
         if ret and frame is not None:
+            print(f"FrameCapturer: Got current frame immediately for {camera_name}")
             return frame.copy()
+        
+        print(f"FrameCapturer: No current frame available, waiting for new frame from {camera_name}")
         
         # If no current frame, wait for new frame
         self.captured_frame = None

@@ -277,8 +277,6 @@ class CaptureWorker(QObject):
             # Try different backends in order of preference for Windows
             backends_to_try = [
                 cv2.CAP_DSHOW,    # DirectShow (default on Windows)
-                cv2.CAP_MSMF,     # Microsoft Media Foundation
-                cv2.CAP_ANY       # Auto-detect
             ]
             
             camera_opened = False
@@ -682,11 +680,16 @@ class CameraViewer(QObject):
         """Connect this viewer to the camera stream."""
         if self.is_connected:
             return True
-            
+        
+        print(f"CameraViewer: Attempting to connect to stream for camera: {self.camera_name}")
         connection = self.frame_emitter.connect_to_camera(self.camera_name, self._on_frame_received)
         if connection is not None:
             self.is_connected = True
+            print(f"CameraViewer: Successfully connected to stream for camera: {self.camera_name}")
             return True
+        else:
+            print(f"CameraViewer: Failed to connect to stream for camera: {self.camera_name}")
+            print(f"CameraViewer: Active cameras in frame emitter: {list(self.frame_emitter.active_cameras.keys())}")
         return False
     
     def disconnect_from_stream(self):

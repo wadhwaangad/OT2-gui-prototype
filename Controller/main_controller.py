@@ -329,12 +329,17 @@ class MainController(QObject):
             )
             if success:
                 print(f"Camera started successfully for calibration. Viewers: {self.get_camera_viewer_count(user_label)}")
+                # Check if camera is active in frame emitter
+                print(f"Camera active in frame emitter: {self.frame_emitter.is_camera_active(user_label)}")
+                # Check active camera names
+                print(f"Active cameras: {self.get_active_camera_names()}")
             else:
                 print(f"Failed to start camera for calibration: {user_label}")
         else:
             print("Warning: No overview camera found for calibration")
         
-        time.sleep(1)
+        # Wait longer for camera to stabilize and ensure it's properly registered
+        time.sleep(2)
         return self.settings_model.run_in_thread(self.settings_model.calibrate_camera, calibration_profile, on_result=on_result, on_error=on_error, on_finished=on_finished)
     def get_calibration_frame(self):
         """Get the last captured calibration frame."""
