@@ -1,5 +1,5 @@
 import cv2
-import multiprocessing as mp
+import threading
 import numpy as np
 import time
 from typing import Optional, Tuple, Union, List
@@ -7,7 +7,9 @@ from pygrabber.dshow_graph import FilterGraph
 import paths
 import json
 import os
-from PyQt6.QtCore import QObject, pyqtSignal, QTimer
+from PyQt6.QtCore import QObject, pyqtSignal, QTimer, QThread, QMutex, QMutexLocker
+from queue import Queue, Empty
+import queue
 
 CAMERA_LABELS_FILE = paths.CAM_CONFIGS_DIR + "/camera_labels.json"
 CAMERA_CONFIG_DIR = paths.CAM_CONFIGS_DIR
@@ -16,10 +18,25 @@ class CameraManagerWindows:
 
     def __init__(self):
         self.graph = FilterGraph()
-        self.devices = self.graph.get_input_devices()
-        self.device_to_index = {name: idx for idx, name in enumerate(self.devices)}
+        self.refresh_devices()
         os.makedirs(CAMERA_CONFIG_DIR, exist_ok=True)
         self.label_map = self.load_labels()
+    
+    def refresh_devices(self):
+        """Refresh the list of available devices and their indices."""
+        try:
+            # Recreate the graph to get fresh device list
+            self.graph = FilterGraph()
+            self.devices = self.graph.get_input_devices()
+            self.device_to_index = {name: idx for idx, name in enumerate(self.devices)}
+            print(f"Refreshed camera devices: {len(self.devices)} found")
+            for i, device in enumerate(self.devices):
+                print(f"  {i}: {device}")
+        except Exception as e:
+            print(f"Error refreshing camera devices: {e}")
+            # Fallback to empty lists if refresh fails
+            self.devices = []
+            self.device_to_index = {}
 
     def load_labels(self):
         if os.path.exists(CAMERA_LABELS_FILE):
@@ -53,7 +70,12 @@ class CameraManagerWindows:
             raise ValueError(f"Label '{label}' not found.")
         index = self.device_to_index.get(device_name)
         if index is None:
-            raise RuntimeError(f"Device '{device_name}' is not connected.")
+            # Try refreshing devices in case the device was reconnected
+            print(f"Device '{device_name}' not found in current list, refreshing...")
+            self.refresh_devices()
+            index = self.device_to_index.get(device_name)
+            if index is None:
+                raise RuntimeError(f"Device '{device_name}' is not connected.")
         return index
 
     def get_config_path(self, label):
@@ -77,6 +99,9 @@ class CameraManagerWindows:
 
     def get_available_cameras(self) -> List[Tuple[str, int]]:
         """Get list of available cameras with their names and indices"""
+        # Refresh device list before returning to ensure indices are current
+        self.refresh_devices()
+        
         cameras = []
         for device_name in self.devices:
             index = self.device_to_index.get(device_name)
@@ -84,15 +109,17 @@ class CameraManagerWindows:
                 cameras.append((device_name, index))
         return cameras
 
-class MultiprocessVideoCapture:
+class ThreadSafeVideoCapture(QObject):
     """
-    A class that captures video frames in a separate process and allows the main process
-    to retrieve the most recent frame without blocking.
+    A thread-safe video capture class that uses Qt threads and signals.
+    Captures frames in a separate thread and emits them via Qt signals.
     """
+    frame_ready = pyqtSignal(np.ndarray)  # Emitted when a new frame is available
+    error_occurred = pyqtSignal(str)  # Emitted when an error occurs
     
     def __init__(self, camera_id: Union[int, str], width: int = 640, height: int = 480, fps: int = 30, focus: int = None):
         """
-        Initialize the MultiprocessVideoCapture.
+        Initialize the ThreadSafeVideoCapture.
         
         Args:
             camera_id: Camera index or path to video file
@@ -101,170 +128,244 @@ class MultiprocessVideoCapture:
             fps: Desired frames per second
             focus: Focus value for camera
         """
-        # Create a shared array for the frame data
-        self.shape = (height, width, 3)
-        self.frame_size = int(np.prod(self.shape))
-        self.shared_array = mp.Array('B', self.frame_size)
+        super().__init__()
+        self.camera_id = camera_id
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.focus = focus
         
-        # Create shared value for frame ready flag and error status
-        self.frame_ready = mp.Value('i', 0)
-        self.has_error = mp.Value('i', 0)
-        self.error_msg = mp.Array('c', 256)
-        self.running = mp.Value('i', 1)
+        # Thread safety
+        self.mutex = QMutex()
+        self.capture_thread = None
+        self.worker = None
+        self.is_running = False
         
-        # Add focus control
-        self.focus_value = mp.Value('i', focus if focus is not None else 0)
-        self.focus_changed = mp.Value('i', 0)
+        # Current frame storage
+        self.current_frame = None
+        self.frame_available = False
         
-        # Create process for video capture
-        self.process = mp.Process(
-            target=self._capture_process, 
-            args=(camera_id, width, height, fps, focus)
-        )
-        self.process.daemon = True
-        self.process.start()
+    def start_capture(self) -> bool:
+        """Start the capture in a separate thread."""
+        if self.is_running:
+            return True
+            
+        try:
+            self.capture_thread = QThread()
+            self.worker = CaptureWorker(self.camera_id, self.width, self.height, self.fps, self.focus)
+            self.worker.moveToThread(self.capture_thread)
+            
+            # Connect signals
+            self.worker.frame_captured.connect(self._on_frame_captured)
+            self.worker.error_occurred.connect(self.error_occurred)
+            self.capture_thread.started.connect(self.worker.start_capture)
+            self.worker.finished.connect(self.capture_thread.quit)
+            self.worker.finished.connect(self.worker.deleteLater)
+            self.capture_thread.finished.connect(self.capture_thread.deleteLater)
+            
+            self.capture_thread.start()
+            self.is_running = True
+            return True
+        except Exception as e:
+            self.error_occurred.emit(f"Failed to start capture: {str(e)}")
+            return False
+    
+    def stop_capture(self):
+        """Stop the capture thread."""
+        if not self.is_running:
+            return
+            
+        self.is_running = False
+        
+        # Signal worker to stop first
+        if self.worker:
+            self.worker.stop()
+        
+        # Wait for thread to finish gracefully
+        if self.capture_thread and self.capture_thread.isRunning():
+            # First try to quit gracefully
+            self.capture_thread.quit()
+            
+            # Wait longer for graceful shutdown
+            if not self.capture_thread.wait(8000):  # Wait up to 8 seconds
+                print(f"Warning: Thread did not finish gracefully for camera {self.camera_id}, forcing termination")
+                self.capture_thread.terminate()
+                # Wait for termination to complete
+                if not self.capture_thread.wait(3000):
+                    print(f"Error: Thread termination failed for camera {self.camera_id}")
+        
+        # Disconnect all signals to prevent issues during cleanup
+        try:
+            if self.worker:
+                self.worker.frame_captured.disconnect()
+                self.worker.error_occurred.disconnect()
+                self.worker.finished.disconnect()
+        except:
+            pass  # Ignore disconnect errors
+        
+        try:
+            if self.capture_thread:
+                self.capture_thread.started.disconnect()
+                self.capture_thread.finished.disconnect()
+        except:
+            pass  # Ignore disconnect errors
+        
+        # Clean up references
+        self.worker = None
+        self.capture_thread = None
+    
+    def __del__(self):
+        """Destructor to ensure proper cleanup."""
+        try:
+            self.stop_capture()
+        except:
+            pass  # Ignore errors during destruction
+    
+    def _on_frame_captured(self, frame: np.ndarray):
+        """Handle frame captured from worker thread."""
+        with QMutexLocker(self.mutex):
+            self.current_frame = frame.copy()
+            self.frame_available = True
+        self.frame_ready.emit(frame)
+    
+    def get_current_frame(self) -> Tuple[bool, Optional[np.ndarray]]:
+        """Get the most recent frame (thread-safe)."""
+        with QMutexLocker(self.mutex):
+            if self.frame_available and self.current_frame is not None:
+                return True, self.current_frame.copy()
+            return False, None
     
     def set_focus(self, focus_value: int):
-        """Set the focus value for the camera"""
-        with self.focus_value.get_lock():
-            self.focus_value.value = focus_value
-            self.focus_changed.value = 1
+        """Set the focus value for the camera (thread-safe)."""
+        if self.worker:
+            self.worker.set_focus(focus_value)
     
-    def _capture_process(self, camera_id: Union[int, str], width: int, height: int, fps: int, focus: int) -> None:
-        """
-        The process function that captures frames from the camera.
+    def is_opened(self) -> bool:
+        """Check if the capture is running."""
+        return self.is_running and self.worker and self.worker.is_capturing
+    
+    def release(self):
+        """Release the video capture resources."""
+        self.stop_capture()
+
+
+class CaptureWorker(QObject):
+    """Worker class that runs in a separate thread to capture video frames."""
+    frame_captured = pyqtSignal(np.ndarray)
+    error_occurred = pyqtSignal(str)
+    finished = pyqtSignal()
+    
+    def __init__(self, camera_id: Union[int, str], width: int, height: int, fps: int, focus: int):
+        super().__init__()
+        self.camera_id = camera_id
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.focus = focus
         
-        Args:
-            camera_id: Camera index or path to video file
-            width: Frame width
-            height: Frame height
-            fps: Desired frames per second
-            focus: Initial focus value
-        """
+        self.cap = None
+        self.is_capturing = False
+        self.should_stop = False
+        self.focus_mutex = QMutex()
+        self.new_focus_value = None
+        
+    def start_capture(self):
+        """Start capturing frames."""
         try:
-            cap = cv2.VideoCapture(camera_id)
-            if not cap.isOpened():
-                with self.has_error.get_lock():
-                    self.has_error.value = 1
-                    error_msg = f"Could not open camera {camera_id}"
-                    self.error_msg.value = error_msg.encode()
+            print(f"Attempting to open camera at index {self.camera_id}")
+            self.cap = cv2.VideoCapture(self.camera_id)
+            
+            # Check if camera opened successfully
+            if not self.cap.isOpened():
+                error_msg = f"Could not open camera {self.camera_id} - camera may be in use or index is invalid"
+                print(error_msg)
+                self.error_occurred.emit(error_msg)
+                self.finished.emit()
+                return
+            
+            # Test if we can actually read from the camera
+            test_ret, test_frame = self.cap.read()
+            if not test_ret:
+                error_msg = f"Camera {self.camera_id} opened but cannot read frames - camera may be in use"
+                print(error_msg)
+                self.cap.release()
+                self.error_occurred.emit(error_msg)
+                self.finished.emit()
                 return
                 
             # Set properties
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-            cap.set(cv2.CAP_PROP_FPS, fps)
-            if focus is not None:
-                cap.set(cv2.CAP_PROP_FOCUS, focus)
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+            self.cap.set(cv2.CAP_PROP_FPS, self.fps)
+            if self.focus is not None:
+                self.cap.set(cv2.CAP_PROP_FOCUS, self.focus)
             
-            # For timing to maintain fps
-            frame_time = 1.0 / fps
+            print(f"Successfully opened camera {self.camera_id}, resolution: {self.width}x{self.height}")
+            self.is_capturing = True
+            frame_time = 1.0 / self.fps
             
-            while self.running.value:
+            while not self.should_stop:
                 start_time = time.time()
                 
-                # Check if focus has changed
-                if self.focus_changed.value:
-                    with self.focus_value.get_lock():
-                        cap.set(cv2.CAP_PROP_FOCUS, self.focus_value.value)
-                        self.focus_changed.value = 0
+                # Check for focus changes
+                with QMutexLocker(self.focus_mutex):
+                    if self.new_focus_value is not None:
+                        self.cap.set(cv2.CAP_PROP_FOCUS, self.new_focus_value)
+                        self.new_focus_value = None
                 
-                ret, frame = cap.read()
+                # Check should_stop before potentially blocking read operation
+                if self.should_stop:
+                    break
+                    
+                ret, frame = self.cap.read()
                 if not ret:
-                    with self.has_error.get_lock():
-                        self.has_error.value = 1
-                        error_msg = "Failed to grab frame from camera"
-                        self.error_msg.value = error_msg.encode()
+                    if not self.should_stop:  # Only emit error if we're not stopping intentionally
+                        self.error_occurred.emit("Failed to grab frame from camera")
+                    break
+                
+                # Check should_stop again after read
+                if self.should_stop:
                     break
                 
                 # Ensure frame size matches expected dimensions
-                if frame.shape != self.shape:
-                    frame = cv2.resize(frame, (width, height))
+                if frame.shape[:2] != (self.height, self.width):
+                    frame = cv2.resize(frame, (self.width, self.height))
                 
-                # Copy the frame data to shared memory
-                frame_flat = frame.flatten()
-                with self.shared_array.get_lock():
-                    shared_array_np = np.frombuffer(self.shared_array.get_obj(), dtype='B')
-                    np.copyto(shared_array_np, frame_flat)
+                self.frame_captured.emit(frame)
                 
-                # Set frame as ready
-                with self.frame_ready.get_lock():
-                    self.frame_ready.value = 1
-                
-                # Sleep to maintain desired fps
+                # Sleep to maintain desired fps, but check for stop signal during sleep
                 elapsed = time.time() - start_time
                 sleep_time = max(0, frame_time - elapsed)
                 if sleep_time > 0:
-                    time.sleep(sleep_time)
+                    # Sleep in smaller chunks to be more responsive to stop signals
+                    sleep_chunks = max(1, int(sleep_time * 10))  # 10 checks per sleep period
+                    chunk_time = sleep_time / sleep_chunks
+                    for _ in range(sleep_chunks):
+                        if self.should_stop:
+                            break
+                        time.sleep(chunk_time)
                     
         except Exception as e:
-            # Handle any exceptions
-            with self.has_error.get_lock():
-                self.has_error.value = 1
-                error_msg = f"Exception in capture process: {str(e)}"
-                self.error_msg.value = error_msg[:255].encode()
+            error_msg = f"Exception in capture for camera {self.camera_id}: {str(e)}"
+            print(error_msg)
+            self.error_occurred.emit(error_msg)
         finally:
-            # Clean up
-            if 'cap' in locals() and cap.isOpened():
-                cap.release()
+            self.is_capturing = False
+            if self.cap:
+                self.cap.release()
+            print(f"Camera {self.camera_id} capture stopped")
+            self.finished.emit()
     
-    def read(self) -> Tuple[bool, Optional[np.ndarray]]:
-        """
-        Read the most recent frame from the video capture process.
-        
-        Returns:
-            Tuple containing:
-            - Boolean indicating if frame was retrieved successfully
-            - The frame as a numpy array or None if no frame is available
-        """
-        # Check for errors
-        if self.has_error.value:
-            error_msg = self.error_msg.value.decode()
-            print(f"Error in capture process: {error_msg}")
-            return False, None
-        
-        # Check if frame is ready
-        if not self.frame_ready.value:
-            return False, None
-        
-        # Get the frame from shared memory
-        with self.shared_array.get_lock():
-            frame_flat = np.frombuffer(self.shared_array.get_obj(), dtype='B')
-            frame = frame_flat.reshape(self.shape).copy()
-        
-        return True, frame
+    def set_focus(self, focus_value: int):
+        """Set focus value (thread-safe)."""
+        with QMutexLocker(self.focus_mutex):
+            self.new_focus_value = focus_value
     
-    def is_opened(self) -> bool:
-        """
-        Check if the video capture is open and running.
-        
-        Returns:
-            Boolean indicating if the capture is open
-        """
-        return self.process.is_alive() and not self.has_error.value
-    
-    def release(self) -> None:
-        """
-        Release the video capture resources.
-        """
-        try:
-            self.running.value = 0
-            if self.process.is_alive():
-                self.process.join(timeout=1.0)
-                if self.process.is_alive():
-                    self.process.terminate()
-                    # Give it another moment to terminate
-                    self.process.join(timeout=0.5)
-        except Exception as e:
-            print(f"Error releasing video capture: {e}")
-            # Force terminate if still alive
-            try:
-                if hasattr(self, 'process') and self.process.is_alive():
-                    self.process.terminate()
-            except Exception as term_error:
-                print(f"Error terminating process: {term_error}")
+    def stop(self):
+        """Stop the capture."""
+        self.should_stop = True
 
-def open_capture(label: str, cam_manager: CameraManagerWindows, resolution: Union[list[int, int], str] = 'default', focus: int = None) -> MultiprocessVideoCapture:
+def open_capture(label: str, cam_manager: CameraManagerWindows, resolution: Union[list[int, int], str] = 'default', focus: int = None) -> ThreadSafeVideoCapture:
     index = cam_manager.get_camera_index_by_label(label)
     if resolution == 'default':
         resolution = cam_manager.load_resolution_config(label)['default_resolution']
@@ -273,7 +374,7 @@ def open_capture(label: str, cam_manager: CameraManagerWindows, resolution: Unio
         if resolution not in config['resolutions']:
             print(f"Warning: Resolution {resolution} not found in saved configurations for camera '{label}'. Using default resolution.")
             resolution = cam_manager.load_resolution_config(label)['default_resolution']
-    return MultiprocessVideoCapture(index, width=resolution[0], height=resolution[1], focus=focus)
+    return ThreadSafeVideoCapture(index, width=resolution[0], height=resolution[1], focus=focus)
 
 class frameOperations():
     def __init__(self, width, height):
@@ -328,33 +429,197 @@ class frameOperations():
 
 class CameraFrameEmitter(QObject):
     """
-    Emits camera frames via PyQt signals for all active cameras.
+    Manages camera frames and emits them via PyQt signals.
+    This class is thread-safe and manages multiple cameras efficiently.
+    Supports multiple simultaneous viewers for each camera.
     """
     frame_ready = pyqtSignal(str, np.ndarray)  # camera_name, frame
     
     def __init__(self):
         super().__init__()
         self.active_cameras = {}
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.emit_frames)
-        self.timer.start(33)  # ~30 FPS emission rate
-    
-    def add_camera(self, camera_name: str, capture: MultiprocessVideoCapture):
-        """Add a camera to the frame emitter."""
-        self.active_cameras[camera_name] = capture
+        self.mutex = QMutex()
+        # Keep track of individual camera connections for multi-viewer support
+        self.camera_connections = {}
+        # Track number of viewers per camera
+        self.camera_viewer_counts = {}
+        
+    def add_camera(self, camera_name: str, capture: ThreadSafeVideoCapture):
+        """Add a camera to the frame emitter (thread-safe)."""
+        with QMutexLocker(self.mutex):
+            if camera_name in self.active_cameras:
+                # Camera already exists, just return (don't replace)
+                return
+            
+            self.active_cameras[camera_name] = capture
+            self.camera_viewer_counts[camera_name] = 0
+            # Connect the camera's frame_ready signal to our emission
+            # Use a lambda to capture the camera name for this specific connection
+            connection = capture.frame_ready.connect(lambda frame, name=camera_name: self.frame_ready.emit(name, frame))
+            self.camera_connections[camera_name] = connection
     
     def remove_camera(self, camera_name: str):
-        """Remove a camera from the frame emitter."""
+        """Remove a camera from the frame emitter (thread-safe)."""
+        with QMutexLocker(self.mutex):
+            self._remove_camera_internal(camera_name)
+    
+    def _remove_camera_internal(self, camera_name: str):
+        """Internal method to remove camera (not thread-safe, caller must hold mutex)."""
         if camera_name in self.active_cameras:
+            capture = self.active_cameras[camera_name]
+            
+            # Stop the capture first
+            try:
+                capture.stop_capture()
+            except:
+                pass  # Ignore errors during cleanup
+            
+            # Disconnect signals
+            try:
+                capture.frame_ready.disconnect()
+            except:
+                pass  # Signal might not be connected
+            
+            # Clean up connection tracking
+            if camera_name in self.camera_connections:
+                del self.camera_connections[camera_name]
+            
+            # Clean up viewer count tracking
+            if camera_name in self.camera_viewer_counts:
+                del self.camera_viewer_counts[camera_name]
+            
             del self.active_cameras[camera_name]
     
-    def emit_frames(self):
-        """Emit frames from all active cameras."""
-        for camera_name, capture in self.active_cameras.items():
-            ret, frame = capture.read()
-            if ret and frame is not None:
-                self.frame_ready.emit(camera_name, frame)
+    def connect_to_camera(self, camera_name: str, slot):
+        """Connect a specific slot to a camera's frame signal (for multiple viewers)."""
+        with QMutexLocker(self.mutex):
+            if camera_name in self.active_cameras:
+                capture = self.active_cameras[camera_name]
+                connection = capture.frame_ready.connect(slot)
+                if connection is not None:
+                    # Increment viewer count
+                    self.camera_viewer_counts[camera_name] = self.camera_viewer_counts.get(camera_name, 0) + 1
+                return connection
+            return None
+    
+    def disconnect_from_camera(self, camera_name: str, slot):
+        """Disconnect a specific slot from a camera's frame signal."""
+        with QMutexLocker(self.mutex):
+            if camera_name in self.active_cameras:
+                capture = self.active_cameras[camera_name]
+                try:
+                    capture.frame_ready.disconnect(slot)
+                    # Decrement viewer count
+                    self.camera_viewer_counts[camera_name] = max(0, self.camera_viewer_counts.get(camera_name, 0) - 1)
+                    
+                    # If no more viewers, consider stopping the camera (but don't auto-stop for now)
+                    # The controller can check viewer count and decide when to stop
+                    return True
+                except:
+                    pass
+            return False
+    
+    def get_camera_frame(self, camera_name: str) -> Tuple[bool, Optional[np.ndarray]]:
+        """Get the current frame from a specific camera (thread-safe)."""
+        with QMutexLocker(self.mutex):
+            if camera_name in self.active_cameras:
+                return self.active_cameras[camera_name].get_current_frame()
+            return False, None
+    
+    def set_camera_focus(self, camera_name: str, focus_value: int) -> bool:
+        """Set focus for a specific camera (thread-safe)."""
+        with QMutexLocker(self.mutex):
+            if camera_name in self.active_cameras:
+                self.active_cameras[camera_name].set_focus(focus_value)
+                return True
+            return False
+    
+    def is_camera_active(self, camera_name: str) -> bool:
+        """Check if a camera is active (thread-safe)."""
+        with QMutexLocker(self.mutex):
+            return camera_name in self.active_cameras and self.active_cameras[camera_name].is_opened()
+    
+    def get_active_camera_names(self) -> List[str]:
+        """Get list of active camera names (thread-safe)."""
+        with QMutexLocker(self.mutex):
+            return list(self.active_cameras.keys())
+    
+    def get_camera_viewer_count(self, camera_name: str) -> int:
+        """Get the number of viewers connected to a camera (thread-safe)."""
+        with QMutexLocker(self.mutex):
+            return self.camera_viewer_counts.get(camera_name, 0)
+    
+    def stop_all_cameras(self):
+        """Stop all cameras (thread-safe)."""
+        with QMutexLocker(self.mutex):
+            for camera_name in list(self.active_cameras.keys()):
+                self._remove_camera_internal(camera_name)
     
     def stop(self):
-        """Stop the frame emitter."""
-        self.timer.stop()
+        """Stop the frame emitter and all cameras."""
+        self.stop_all_cameras()
+    
+    def __del__(self):
+        """Destructor to ensure proper cleanup."""
+        try:
+            self.stop()
+        except:
+            pass  # Ignore errors during destruction
+
+
+class CameraViewer(QObject):
+    """
+    A helper class that makes it easy to connect to and display camera streams.
+    Multiple viewers can connect to the same camera stream simultaneously.
+    
+    Usage example:
+        # In your controller or view:
+        viewer1 = controller.create_camera_viewer("HD USB CAMERA")
+        viewer2 = controller.create_camera_viewer("HD USB CAMERA")
+        
+        # Connect to your display widgets
+        viewer1.frame_received.connect(display_widget1.set_frame)
+        viewer2.frame_received.connect(display_widget2.set_frame)
+        
+        # Start viewing
+        viewer1.connect_to_stream()
+        viewer2.connect_to_stream()
+        
+        # Both widgets will now receive the same camera stream simultaneously
+    """
+    frame_received = pyqtSignal(np.ndarray)  # Emitted when this viewer receives a frame
+    
+    def __init__(self, camera_name: str, frame_emitter: CameraFrameEmitter):
+        super().__init__()
+        self.camera_name = camera_name
+        self.frame_emitter = frame_emitter
+        self.is_connected = False
+        
+    def connect_to_stream(self) -> bool:
+        """Connect this viewer to the camera stream."""
+        if self.is_connected:
+            return True
+            
+        connection = self.frame_emitter.connect_to_camera(self.camera_name, self._on_frame_received)
+        if connection is not None:
+            self.is_connected = True
+            return True
+        return False
+    
+    def disconnect_from_stream(self):
+        """Disconnect this viewer from the camera stream."""
+        if self.is_connected:
+            self.frame_emitter.disconnect_from_camera(self.camera_name, self._on_frame_received)
+            self.is_connected = False
+    
+    def _on_frame_received(self, frame: np.ndarray):
+        """Internal method to handle incoming frames and re-emit for this viewer."""
+        self.frame_received.emit(frame)
+    
+    def get_current_frame(self) -> Tuple[bool, Optional[np.ndarray]]:
+        """Get the current frame from the camera."""
+        return self.frame_emitter.get_camera_frame(self.camera_name)
+    
+    def is_camera_active(self) -> bool:
+        """Check if the camera is active."""
+        return self.frame_emitter.is_camera_active(self.camera_name)

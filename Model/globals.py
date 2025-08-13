@@ -1,12 +1,15 @@
 from typing import Dict
-from Model.camera import MultiprocessVideoCapture, frameOperations
+from Model.camera import ThreadSafeVideoCapture, frameOperations
 from typing import Dict
+from PyQt6.QtCore import QMutex
+import threading
 robot_api=None
 robot_initialized=False
 get_run_info=False
 calibration_frame=None
-# Labware-related global variables
-active_cameras: Dict[str, MultiprocessVideoCapture] = {}
+# Thread-safe camera management
+_camera_mutex = QMutex()
+active_cameras: Dict[str, ThreadSafeVideoCapture] = {}
 custom_labware = False
 protocol_labware = []
 current_run_info = {}

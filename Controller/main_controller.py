@@ -4,7 +4,7 @@ Manages communication between models and views.
 """
 
 from typing import Dict, Any, List, Optional
-from Model.camera import CameraManagerWindows, MultiprocessVideoCapture, CameraFrameEmitter
+from Model.camera import CameraManagerWindows, ThreadSafeVideoCapture, CameraFrameEmitter, CameraViewer
 from Model.settings import SettingsModel
 from Model.labware import LabwareModel
 import sys
@@ -44,19 +44,19 @@ class MainController(QObject):
         self.wellplate_view = None
         
     def _inject_frame_emitter_dependencies(self):
-        """Inject frame emitter into models that need it."""
-        # Update frame capturer instances in models
+        """Inject controller into models that need it for frame capture."""
+        # Update frame capturer instances in models to use controller
         if hasattr(self.labware_model, 'frame_capturer'):
-            self.labware_model.frame_capturer.set_frame_emitter(self.frame_emitter)
+            self.labware_model.frame_capturer.set_controller(self)
         if hasattr(self.settings_model, 'frame_capturer'):
-            self.settings_model.frame_capturer.set_frame_emitter(self.frame_emitter)
+            self.settings_model.frame_capturer.set_controller(self)
         if hasattr(self.manual_movement_model, 'frame_capturer'):
-            self.manual_movement_model.frame_capturer.set_frame_emitter(self.frame_emitter)
+            self.manual_movement_model.frame_capturer.set_controller(self)
     
     def update_frame_emitter_for_model(self, model):
-        """Update frame emitter for a specific model that has frame_capturer."""
+        """Update controller for a specific model that has frame_capturer."""
         if hasattr(model, 'frame_capturer'):
-            model.frame_capturer.set_frame_emitter(self.frame_emitter)
+            model.frame_capturer.set_controller(self)
         
     
     def set_views(self, main_view, settings_view, labware_view, camera_view, wellplate_view=None):
@@ -72,32 +72,6 @@ class MainController(QObject):
         """Set reference to the universal status widget."""
         self.status_widget = status_widget
     
-    def auto_start_cameras(self):
-        """Auto-start all available cameras on app initialization."""
-        try:
-            cameras = self.get_available_cameras()
-            for camera_info in cameras:
-                if len(camera_info) >= 4:
-                    user_label, cam_index, cam_name, default_res = camera_info
-                else:
-                    user_label, cam_index, cam_name = camera_info[:3]
-                    default_res = None
-                
-                # Use default resolution if available, otherwise fallback
-                if default_res and len(default_res) == 2:
-                    width, height = default_res
-                else:
-                    width, height = 640, 480
-                
-                print(f"Starting camera: {user_label} (Index: {cam_index})")
-                success = self.start_camera_capture(user_label, cam_index, width, height)
-                if success:
-                    print(f"Successfully started camera: {user_label}")
-                else:
-                    print(f"Failed to start camera: {user_label}")
-        except Exception as e:
-            print(f"Error auto-starting cameras: {e}")
-    
     def get_frame_emitter(self):
         """Get the frame emitter for signal connections."""
         return self.frame_emitter
@@ -105,9 +79,15 @@ class MainController(QObject):
     def shutdown_cameras(self):
         """Shutdown all cameras when app closes."""
         try:
-            self.frame_emitter.stop()
-            for camera_name in list(globals.active_cameras.keys()):
+            # Get list of active cameras before stopping
+            active_camera_names = self.frame_emitter.get_active_camera_names()
+            
+            # Stop all cameras
+            for camera_name in active_camera_names:
                 self.stop_camera_capture(camera_name)
+            
+            # Stop the frame emitter
+            self.frame_emitter.stop()
             print("All cameras shut down successfully")
         except Exception as e:
             print(f"Error shutting down cameras: {e}")
@@ -151,8 +131,13 @@ class MainController(QObject):
     def start_camera_capture(self, camera_name: str, camera_index: int, width: int = None, height: int = None, focus: int = None) -> bool:
         """Start capturing from a specific camera, using default resolution if available."""
         try:
-            if camera_name in globals.active_cameras:
-                self.stop_camera_capture(camera_name)
+            # Check if camera is already running
+            is_active = self.frame_emitter.is_camera_active(camera_name)
+            print(f"Camera {camera_name} is_active check: {is_active}")
+            if is_active:
+                # Camera is already running, just return success
+                print(f"Camera {camera_name} is already active, skipping start")
+                return True
 
             # Try to use default resolution if not provided
             if width is None or height is None:
@@ -190,13 +175,46 @@ class MainController(QObject):
             if height is None:
                 height = 480
 
-            capture = MultiprocessVideoCapture(camera_index, width, height, focus=focus)
-            globals.active_cameras[camera_name] = capture
+            print(f"Starting camera capture: {camera_name} (index: {camera_index}) at {width}x{height}")
+
+            # Create and start thread-safe capture
+            capture = ThreadSafeVideoCapture(camera_index, width, height, focus=focus)
+            success = capture.start_capture()
             
-            # Add camera to frame emitter
-            self.frame_emitter.add_camera(camera_name, capture)
-            
-            return True
+            if success:
+                # Add camera to frame emitter (this manages the camera lifecycle)
+                self.frame_emitter.add_camera(camera_name, capture)
+                print(f"Successfully started camera capture for {camera_name}")
+                return True
+            else:
+                print(f"Failed to start camera capture for {camera_name}")
+                capture.release()
+                
+                # If initial attempt failed, try refreshing cameras and getting updated index
+                print(f"Refreshing cameras and retrying for {camera_name}")
+                self.refresh_cameras()
+                
+                # Try to get updated camera index
+                cameras = self.get_available_cameras()
+                updated_index = None
+                for user_label, cam_index, cam_name, default_res in cameras:
+                    if user_label == camera_name or cam_name == camera_name:
+                        updated_index = cam_index
+                        break
+                
+                if updated_index is not None and updated_index != camera_index:
+                    print(f"Camera index updated from {camera_index} to {updated_index}, retrying...")
+                    capture = ThreadSafeVideoCapture(updated_index, width, height, focus=focus)
+                    success = capture.start_capture()
+                    if success:
+                        self.frame_emitter.add_camera(camera_name, capture)
+                        print(f"Successfully started camera capture for {camera_name} with updated index")
+                        return True
+                    else:
+                        capture.release()
+                
+                return False
+                
         except Exception as e:
             print(f"Error starting camera capture: {e}")
             return False
@@ -204,18 +222,8 @@ class MainController(QObject):
     def stop_camera_capture(self, camera_name: str) -> bool:
         """Stop capturing from a specific camera."""
         try:
-            if camera_name in globals.active_cameras:
-                # Remove from frame emitter first
-                self.frame_emitter.remove_camera(camera_name)
-                
-                camera = globals.active_cameras[camera_name]
-                try:
-                    camera.release()
-                except Exception as e:
-                    print(f"Error releasing camera {camera_name}: {e}")
-                finally:
-                    # Always remove from the dictionary
-                    del globals.active_cameras[camera_name]
+            # Remove from frame emitter (this will stop and cleanup the camera)
+            self.frame_emitter.remove_camera(camera_name)
             return True
         except Exception as e:
             print(f"Error stopping camera capture for {camera_name}: {e}")
@@ -223,24 +231,48 @@ class MainController(QObject):
     
     def get_camera_frame(self, camera_name: str):
         """Get the latest frame from a specific camera."""
-        if camera_name in globals.active_cameras:
-            return globals.active_cameras[camera_name].read()
-        return False, None
+        return self.frame_emitter.get_camera_frame(camera_name)
     
     def set_camera_focus(self, camera_name: str, focus_value: int) -> bool:
         """Set focus for a specific camera."""
         try:
-            if camera_name in globals.active_cameras:
-                globals.active_cameras[camera_name].set_focus(focus_value)
+            success = self.frame_emitter.set_camera_focus(camera_name, focus_value)
+            if success:
                 globals.default_focus = focus_value
-                return True
-            return False
+            return success
         except Exception as e:
             print(f"Error setting camera focus: {e}")
             return False
+            
     def is_camera_active(self, camera_name: str) -> bool:
         """Check if a camera is actively capturing."""
-        return camera_name in globals.active_cameras
+        return self.frame_emitter.is_camera_active(camera_name)
+    
+    def connect_to_camera_stream(self, camera_name: str, slot):
+        """Connect a slot directly to a camera's frame stream for multiple viewers."""
+        return self.frame_emitter.connect_to_camera(camera_name, slot)
+    
+    def disconnect_from_camera_stream(self, camera_name: str, slot):
+        """Disconnect a slot from a camera's frame stream."""
+        return self.frame_emitter.disconnect_from_camera(camera_name, slot)
+    
+    def get_active_camera_names(self) -> List[str]:
+        """Get list of currently active camera names."""
+        return self.frame_emitter.get_active_camera_names()
+    
+    def get_camera_viewer_count(self, camera_name: str) -> int:
+        """Get the number of viewers connected to a camera."""
+        return self.frame_emitter.get_camera_viewer_count(camera_name)
+    
+    def create_camera_viewer(self, camera_name: str) -> 'CameraViewer':
+        """Create a new camera viewer for the specified camera.
+        Multiple viewers can be created for the same camera to display in different locations.
+        """
+        return CameraViewer(camera_name, self.frame_emitter)
+    
+    def refresh_cameras(self):
+        """Refresh the list of available cameras."""
+        self.camera_manager.refresh_devices()
     
     # Settings control methods
     def initialize_robot(self, on_result=None, on_error=None, on_finished=None):
@@ -284,17 +316,26 @@ class MainController(QObject):
             user_label, camera_index, cam_name, default_res = camera_data
             if "overview_cam" in user_label.lower():
                 overview_camera = (cam_name, camera_index, user_label, default_res)
+                break
+        
         if overview_camera:
             cam_name, camera_index, user_label, default_res = overview_camera
+            print(f"Starting camera for calibration: {user_label}")
             success = self.start_camera_capture(
-                cam_name,
+                user_label,  # Use the user_label as camera_name for consistency
                 camera_index,
-                width=default_res[0],
-                height=default_res[1]
+                width=default_res[0] if default_res else 640,
+                height=default_res[1] if default_res else 480
             )
+            if success:
+                print(f"Camera started successfully for calibration. Viewers: {self.get_camera_viewer_count(user_label)}")
+            else:
+                print(f"Failed to start camera for calibration: {user_label}")
+        else:
+            print("Warning: No overview camera found for calibration")
+        
         time.sleep(1)
         return self.settings_model.run_in_thread(self.settings_model.calibrate_camera, calibration_profile, on_result=on_result, on_error=on_error, on_finished=on_finished)
-        #self.settings_model.calibrate_camera(calibration_profile)
     def get_calibration_frame(self):
         """Get the last captured calibration frame."""
         return globals.calibration_frame
@@ -413,37 +454,55 @@ class MainController(QObject):
         return thread is not None
     
     def calibrate_tip(self, on_result=None, on_error=None, on_finished=None) -> bool:
+        """Calibrate the tip using overview and underview cameras."""
         cameras = self.get_available_cameras()
-        # Look for overview camera first
+        # Look for overview and underview cameras
         overview_camera = None
         underview_camera = None
+        
         for camera_data in cameras:
             user_label, camera_index, cam_name, default_res = camera_data
             if "overview_cam" in user_label.lower():
                 overview_camera = (cam_name, camera_index, user_label, default_res)
-            if "underview_cam" in user_label.lower():
+            elif "underview_cam" in user_label.lower():
                 underview_camera = (cam_name, camera_index, user_label, default_res)
-        #         break
+        
+        # Start overview camera
         if overview_camera:
             cam_name, camera_index, user_label, default_res = overview_camera
-
+            print(f"Starting overview camera for tip calibration: {user_label}")
             success = self.start_camera_capture(
-                cam_name,
+                user_label,  # Use the user_label as camera_name for consistency
                 camera_index,
-                width=default_res[0],
-                height=default_res[1]
+                width=default_res[0] if default_res else 640,
+                height=default_res[1] if default_res else 480
             )
+            if success:
+                print(f"Overview camera started. Viewers: {self.get_camera_viewer_count(user_label)}")
+            else:
+                print(f"Failed to start overview camera: {user_label}")
+        else:
+            print("Warning: No overview camera found for tip calibration")
 
+        # Start underview camera
         if underview_camera:
             cam_name, camera_index, user_label, default_res = underview_camera
+            print(f"Starting underview camera for tip calibration: {user_label}")
             success = self.start_camera_capture(
-                cam_name,
+                user_label,  # Use the user_label as camera_name for consistency
                 camera_index,
-                width=default_res[0],
-                height=default_res[1],
-                focus = globals.default_focus
+                width=default_res[0] if default_res else 640,
+                height=default_res[1] if default_res else 480,
+                focus=globals.default_focus
             )
-        time.sleep(2)
+            if success:
+                print(f"Underview camera started. Viewers: {self.get_camera_viewer_count(user_label)}")
+            else:
+                print(f"Failed to start underview camera: {user_label}")
+        else:
+            print("Warning: No underview camera found for tip calibration")
+        
+        time.sleep(2)  # Allow cameras to stabilize
         thread = self.labware_model.run_in_thread(
             self.labware_model.calibrate_tip,
             on_result=on_result,

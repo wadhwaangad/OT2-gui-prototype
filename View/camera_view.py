@@ -31,9 +31,11 @@ class CameraTestWindow(QDialog):
         self.setup_ui()
         self.setup_timer()
         
-        # Start camera capture
-        self.start_capture()
+        # Initialize focus max value after UI is setup
         self.on_focus_max_changed(1100)
+        
+        # Connect to existing camera stream (don't start new capture)
+        self.connect_to_stream()
     
     def setup_ui(self):
         """Setup the user interface."""
@@ -153,14 +155,20 @@ class CameraTestWindow(QDialog):
         self.setLayout(layout)
 
     def setup_timer(self):
-        """Connect to frame signals instead of using timer."""
-        # Connect to frame emitter signals
-        frame_emitter = self.controller.get_frame_emitter()
-        frame_emitter.frame_ready.connect(self.on_frame_received)
+        """Setup camera viewer for this window."""
+        try:
+            # Create a dedicated camera viewer for this window
+            self.camera_viewer = self.controller.create_camera_viewer(self.camera_name)
+            self.camera_viewer.frame_received.connect(self.on_frame_received)
+        except Exception as e:
+            print(f"Error setting up camera viewer for {self.camera_name}: {e}")
+            import traceback
+            traceback.print_exc()
+            self.camera_viewer = None
 
-    def on_frame_received(self, camera_name: str, frame):
-        """Handle incoming frame from signal."""
-        if camera_name == self.camera_name and self.is_capturing:
+    def on_frame_received(self, frame):
+        """Handle incoming frame from camera viewer."""
+        if self.is_capturing:
             self.update_frame_display(frame)
 
     def update_frame_display(self, frame):
@@ -187,24 +195,77 @@ class CameraTestWindow(QDialog):
 
     def start_capture(self):
         """Start camera capture."""
-        # Get current resolution
-        width, height = self.get_selected_resolution()
-        
-        # Start camera capture
-        success = self.controller.start_camera_capture(self.camera_name, self.camera_index, width, height)
-        if success:
-            self.is_capturing = True
-            self.capture_btn.setText("Stop Capture")
-            # Set focus to current slider value
-            self.controller.set_camera_focus(self.camera_name, self.focus_slider.value())
+        try:
+            # Refresh cameras before starting to ensure indices are current
+            self.controller.refresh_cameras()
+            
+            # Get current resolution
+            width, height = self.get_selected_resolution()
+            
+            # Check if camera viewer was created successfully
+            if not hasattr(self, 'camera_viewer') or self.camera_viewer is None:
+                print(f"Camera viewer not initialized for {self.camera_name}")
+                return
+            
+            # Start camera capture (this will succeed even if camera is already running)
+            success = self.controller.start_camera_capture(self.camera_name, self.camera_index, width, height)
+            if success:
+                # Connect this viewer to the stream
+                if self.camera_viewer.connect_to_stream():
+                    self.is_capturing = True
+                    self.capture_btn.setText("Stop Capture")
+                    # Set focus to current slider value
+                    self.controller.set_camera_focus(self.camera_name, self.focus_slider.value())
+                    print(f"Started test window for camera: {self.camera_name}, viewers: {self.controller.get_camera_viewer_count(self.camera_name)}")
+                else:
+                    print(f"Failed to connect viewer to camera stream: {self.camera_name}")
+            else:
+                print(f"Failed to start camera capture for {self.camera_name} at index {self.camera_index}")
+        except Exception as e:
+            print(f"Error in start_capture for {self.camera_name}: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def connect_to_stream(self):
+        """Connect to existing camera stream without starting new capture."""
+        try:
+            # Check if camera viewer was created successfully
+            if not hasattr(self, 'camera_viewer') or self.camera_viewer is None:
+                print(f"Camera viewer not initialized for {self.camera_name}")
+                return
+            
+            # Connect this viewer to the existing stream
+            if self.camera_viewer.connect_to_stream():
+                self.is_capturing = True
+                self.capture_btn.setText("Stop Capture")
+                # Set focus to current slider value
+                self.controller.set_camera_focus(self.camera_name, self.focus_slider.value())
+                print(f"Connected test window to existing camera stream: {self.camera_name}, viewers: {self.controller.get_camera_viewer_count(self.camera_name)}")
+            else:
+                print(f"Failed to connect viewer to camera stream: {self.camera_name}")
+                # If connection failed, try starting capture
+                self.start_capture()
+                
+        except Exception as e:
+            print(f"Error in connect_to_stream for {self.camera_name}: {e}")
+            import traceback
+            traceback.print_exc()
     
     def stop_capture(self):
-        """Stop camera capture completely."""
+        """Stop camera capture for this viewer only."""
         self.is_capturing = False
         self.capture_btn.setText("Start Capture")
         self.video_display.clear_frame()
-        # Actually stop the camera capture
-        self.controller.stop_camera_capture(self.camera_name)
+        
+        # Disconnect this viewer from the stream
+        self.camera_viewer.disconnect_from_stream()
+        print(f"Stopped test window for camera: {self.camera_name}, remaining viewers: {self.controller.get_camera_viewer_count(self.camera_name)}")
+        
+        # Only stop the actual camera capture if no other viewers are using it
+        viewer_count = self.controller.get_camera_viewer_count(self.camera_name)
+        if viewer_count == 0:
+            print(f"No more viewers for {self.camera_name}, stopping camera capture")
+            self.controller.stop_camera_capture(self.camera_name)
     
     def toggle_capture(self):
         """Toggle camera capture."""
@@ -247,15 +308,20 @@ class CameraTestWindow(QDialog):
     
     def closeEvent(self, event):
         """Handle close event."""
-        # Stop camera capture when window is closed
-        self.controller.stop_camera_capture(self.camera_name)
-        # Disconnect from signals
-        frame_emitter = self.controller.get_frame_emitter()
         try:
-            frame_emitter.frame_ready.disconnect(self.on_frame_received)
-        except:
-            pass  # Ignore if already disconnected
-        event.accept()
+            # Stop capturing for this window
+            if self.is_capturing:
+                self.stop_capture()
+            
+            # Disconnect this viewer from the stream (if not already done)
+            if hasattr(self, 'camera_viewer') and self.camera_viewer and self.camera_viewer.is_connected:
+                self.camera_viewer.disconnect_from_stream()
+            
+            event.accept()
+            
+        except Exception as e:
+            print(f"Error during close event: {e}")
+            event.accept()
 
 
 class CameraView(QWidget):
@@ -266,6 +332,7 @@ class CameraView(QWidget):
         self.controller = controller
         self.test_windows = {}
         self.active_embedded_cameras = {}
+        self.embedded_camera_viewer = None  # For the embedded display
         
         self.setup_ui()
         self.setup_timer()
@@ -436,18 +503,86 @@ class CameraView(QWidget):
         return right_widget
     
     def setup_timer(self):
-        """Connect to frame signals instead of using timer."""
-        # Connect to frame emitter signals
-        frame_emitter = self.controller.get_frame_emitter()
-        frame_emitter.frame_ready.connect(self.on_embedded_frame_received)
+        """Setup for receiving camera frames - now handled by individual camera viewers."""
+        pass  # Camera viewers handle their own connections
     
-    def on_embedded_frame_received(self, camera_name: str, frame):
-        """Handle incoming frame from signal for embedded display."""
-        if camera_name in self.active_embedded_cameras:
-            self.update_embedded_display_frame(frame)
+    def update_embedded_display_frame(self, frame):
+        """Update the embedded camera display with the given frame."""
+        if frame is not None:
+            self.embedded_video_display.set_frame(frame)
+    
+    def on_focus_changed(self, value):
+        """Handle focus slider changes."""
+        self.focus_value_label.setText(str(value))
+        
+        # Apply focus to active embedded camera
+        if self.active_embedded_cameras:
+            camera_name = list(self.active_embedded_cameras.keys())[0]
+            self.controller.set_camera_focus(camera_name, value)
+    
+    def on_focus_max_changed(self, value):
+        """Update the maximum value of the focus slider."""
+        self.focus_slider.setMaximum(value)
+        # If current value is above new max, adjust
+        if self.focus_slider.value() > value:
+            self.focus_slider.setValue(value)
+    
+    def reset_embedded_view(self):
+        """Reset the embedded video view."""
+        self.embedded_video_display.reset_view()
+    
+    def on_camera_double_clicked(self, item):
+        """Handle double-click on camera item."""
+        camera_data = item.data(Qt.ItemDataRole.UserRole)
+        if camera_data is not None:
+            self.test_camera(camera_data[0], camera_data[1])
+    
+    def test_camera(self, camera_name: str, camera_index: int):
+        """Open a test window for the specified camera."""
+        # Refresh cameras before testing to ensure indices are current
+        self.controller.refresh_cameras()
+        
+        # Close existing test window for this camera if it exists
+        if camera_name in self.test_windows:
+            self.test_windows[camera_name].close()
+        
+        # Get resolution
+        if self.res_combo.isVisible() and self.res_combo.count() > 0:
+            width, height = self.res_combo.currentData()
+        else:
+            width = self.custom_width.value()
+            height = self.custom_height.value()
+        
+        # Start camera capture if not already active
+        if not self.controller.is_camera_active(camera_name):
+            success = self.controller.start_camera_capture(camera_name, camera_index, width, height)
+            if not success:
+                print(f"Failed to start camera capture for {camera_name} at index {camera_index}")
+                return
+        
+        # Create new test window
+        test_window = CameraTestWindow(camera_name, camera_index, self.controller, self)
+        test_window.show()
+        
+        # Store reference
+        self.test_windows[camera_name] = test_window
+        
+        # Connect close event to clean up reference
+        test_window.finished.connect(lambda: self.on_test_window_closed(camera_name))
+    
+    def on_test_window_closed(self, camera_name: str):
+        """Handle test window closure."""
+        if camera_name in self.test_windows:
+            del self.test_windows[camera_name]
+        
+        # Camera capture is already stopped by the test window's closeEvent
+        # No additional action needed here since the window handles its own cleanup
     
     def refresh_cameras(self):
         """Refresh the list of available cameras."""
+        # First, refresh the camera manager's device list
+        self.controller.refresh_cameras()
+        
         self.camera_list.clear()
         
         cameras = self.controller.get_available_cameras()
@@ -466,6 +601,7 @@ class CameraView(QWidget):
             self.camera_list.addItem(item)
     
     def on_camera_selection_changed(self):
+        """Handle camera selection changes."""
         import os, json
         current_item = self.camera_list.currentItem()
         if current_item and current_item.data(Qt.ItemDataRole.UserRole) is not None:
@@ -556,10 +692,16 @@ class CameraView(QWidget):
     def start_embedded_camera(self, camera_name: str, camera_index: int):
         """Start a camera in embedded view."""
         try:
+            # Refresh cameras before starting to ensure indices are current
+            self.controller.refresh_cameras()
+            
             # Stop any currently active embedded camera display
-            if self.active_embedded_cameras:
-                for active_name in list(self.active_embedded_cameras.keys()):
-                    self.stop_embedded_camera(active_name)
+            if self.embedded_camera_viewer:
+                self.embedded_camera_viewer.disconnect_from_stream()
+                self.embedded_camera_viewer = None
+            
+            # Clear any previous embedded camera state
+            self.active_embedded_cameras.clear()
             
             # Get resolution
             if self.res_combo.isVisible() and self.res_combo.count() > 0:
@@ -568,113 +710,67 @@ class CameraView(QWidget):
                 width = self.custom_width.value()
                 height = self.custom_height.value()
             
-            # Start camera capture
+            # Start camera capture (if not already running)
             success = self.controller.start_camera_capture(camera_name, camera_index, width, height)
             if success:
-                self.active_embedded_cameras[camera_name] = camera_index
-                self.active_camera_label.setText(f"Active: {camera_name}")
-                self.start_stop_btn.setText("Stop Camera")
-                self.focus_slider.setEnabled(True)
-                self.reset_view_btn.setEnabled(True)
-                # Set initial focus
-                self.controller.set_camera_focus(camera_name, self.focus_slider.value())
+                # Create a camera viewer for the embedded display
+                self.embedded_camera_viewer = self.controller.create_camera_viewer(camera_name)
+                self.embedded_camera_viewer.frame_received.connect(self.update_embedded_display_frame)
+                
+                if self.embedded_camera_viewer.connect_to_stream():
+                    self.active_embedded_cameras[camera_name] = camera_index
+                    self.active_camera_label.setText(f"Active: {camera_name}")
+                    self.start_stop_btn.setText("Stop Camera")
+                    self.focus_slider.setEnabled(True)
+                    self.reset_view_btn.setEnabled(True)
+                    # Set initial focus
+                    self.controller.set_camera_focus(camera_name, self.focus_slider.value())
+                    
+                    print(f"Started embedded camera: {camera_name}, viewers: {self.controller.get_camera_viewer_count(camera_name)}")
+                else:
+                    print(f"Failed to connect embedded viewer to camera stream: {camera_name}")
+            else:
+                print(f"Failed to start camera capture for {camera_name} at index {camera_index}")
         except Exception as e:
-            pass  # Backend handles error messaging
+            print(f"Error starting embedded camera: {e}")
     
     def stop_embedded_camera(self, camera_name: str):
-        """Stop an embedded camera display and camera capture."""
+        """Stop an embedded camera display."""
         try:            
             if camera_name in self.active_embedded_cameras:
-                # Stop camera capture
-                self.controller.stop_camera_capture(camera_name)
+                # Disconnect the embedded viewer
+                if self.embedded_camera_viewer:
+                    self.embedded_camera_viewer.disconnect_from_stream()
+                    self.embedded_camera_viewer = None
+                
                 del self.active_embedded_cameras[camera_name]
+                print(f"Stopped embedded camera: {camera_name}, remaining viewers: {self.controller.get_camera_viewer_count(camera_name)}")
             
             self.active_camera_label.setText("No active camera")
             self.embedded_video_display.clear_frame()
             self.start_stop_btn.setText("Start Camera")
             self.focus_slider.setEnabled(False)
             self.reset_view_btn.setEnabled(False)
+            
+            # Only stop the actual camera capture if no other viewers are using it
+            viewer_count = self.controller.get_camera_viewer_count(camera_name)
+            if viewer_count == 0:
+                print(f"No more viewers for {camera_name}, stopping camera capture")
+                self.controller.stop_camera_capture(camera_name)
+            
         except Exception as e:
-            pass  # Backend handles error messaging
+            print(f"Error stopping embedded camera: {e}")
     
     def stop_all_cameras(self):
         """Stop all active cameras."""
-        # Stop embedded cameras
-        for camera_name in list(self.active_embedded_cameras.keys()):
-            self.stop_embedded_camera(camera_name)
+        # Stop embedded camera viewer
+        if self.embedded_camera_viewer:
+            self.embedded_camera_viewer.disconnect_from_stream()
+            self.embedded_camera_viewer = None
+        
+        # Clear active embedded cameras
+        self.active_embedded_cameras.clear()
         
         # Close all test windows (they will stop their own cameras)
         for camera_name, window in list(self.test_windows.items()):
             window.close()
-
-    def update_embedded_display(self):
-        """Legacy method - no longer used with signal system."""
-        pass
-
-    def update_embedded_display_frame(self, frame):
-        """Update the embedded camera display with the given frame."""
-        if frame is not None:
-            self.embedded_video_display.set_frame(frame)
-    
-    def on_focus_changed(self, value):
-        """Handle focus slider changes."""
-        self.focus_value_label.setText(str(value))
-        
-        # Apply focus to active embedded camera
-        if self.active_embedded_cameras:
-            camera_name = list(self.active_embedded_cameras.keys())[0]
-            self.controller.set_camera_focus(camera_name, value)
-    
-    def on_focus_max_changed(self, value):
-        """Update the maximum value of the focus slider."""
-        self.focus_slider.setMaximum(value)
-        # If current value is above new max, adjust
-        if self.focus_slider.value() > value:
-            self.focus_slider.setValue(value)
-    
-    def reset_embedded_view(self):
-        """Reset the embedded video view."""
-        self.embedded_video_display.reset_view()
-    
-    def on_camera_double_clicked(self, item):
-        """Handle double-click on camera item."""
-        camera_data = item.data(Qt.ItemDataRole.UserRole)
-        if camera_data is not None:
-            self.test_camera(camera_data[0], camera_data[1])
-    
-    def test_camera(self, camera_name: str, camera_index: int):
-        """Open a test window for the specified camera."""
-        # Close existing test window for this camera if it exists
-        if camera_name in self.test_windows:
-            self.test_windows[camera_name].close()
-        
-        # Get resolution
-        if self.res_combo.isVisible() and self.res_combo.count() > 0:
-            width, height = self.res_combo.currentData()
-        else:
-            width = self.custom_width.value()
-            height = self.custom_height.value()
-        
-        # Start camera capture if not already active
-        if not self.controller.is_camera_active(camera_name):
-            success = self.controller.start_camera_capture(camera_name, camera_index, width, height)
-            if not success:
-                return
-        
-        # Create new test window
-        test_window = CameraTestWindow(camera_name, camera_index, self.controller, self)
-        test_window.show()
-        
-        # Store reference
-        self.test_windows[camera_name] = test_window
-        
-        # Connect close event to clean up reference
-        test_window.finished.connect(lambda: self.on_test_window_closed(camera_name))
-    
-    def on_test_window_closed(self, camera_name: str):
-        """Handle test window closure."""
-        if camera_name in self.test_windows:
-            del self.test_windows[camera_name]
-        
-        # Camera capture is already stopped by the test window's closeEvent
-        # No additional action needed here since the window handles its own cleanup

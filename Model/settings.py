@@ -19,7 +19,9 @@ from Model.manual_movement import ManualMovementModel
 from Model.camera import frameOperations as frame_ops
 import keyboard
 import time
-OverviewCameraName = "HD USB CAMERA"
+
+# Camera name constants - using user labels that match controller
+OverviewCameraName = "overview_cam"  # User label for overview camera
 
 class SettingsModel:
     """Model for handling settings and robot control operations."""
@@ -27,7 +29,7 @@ class SettingsModel:
     def __init__(self):
         self.lights_on = False
         self.active_threads=[]
-        # Frame capturer will be initialized with proper frame emitter later
+        # Frame capturer will be initialized with proper controller later
         self.frame_capturer = get_frame_capturer()
 
     def run_in_thread(self, fn, *args, on_result=None, on_error=None, on_finished=None, **kwargs):
@@ -364,40 +366,6 @@ class SettingsModel:
         
         return utils.compute_tf_mtx(robot_to_camera_coords)
 
-    def _cleanup_calibration_cameras(self) -> None:
-        """Clean up camera resources used during calibration to prevent conflicts."""
-        try:
-            # Get a copy of all active cameras to avoid dictionary modification during iteration
-            cameras_to_cleanup = list(globals.active_cameras.keys())
-            
-            # Get the frame emitter from the frame capturer
-            if self.frame_capturer and hasattr(self.frame_capturer, 'frame_emitter') and self.frame_capturer.frame_emitter:
-                frame_emitter = self.frame_capturer.frame_emitter
-                
-                for camera_name in cameras_to_cleanup:
-                    try:
-                        print(f"Cleaning up camera: {camera_name}")
-                        
-                        # Remove from frame emitter first
-                        frame_emitter.remove_camera(camera_name)
-                        
-                        # Release the camera
-                        camera = globals.active_cameras[camera_name]
-                        try:
-                            camera.release()
-                        except Exception as e:
-                            print(f"Error releasing camera {camera_name}: {e}")
-                        finally:
-                            # Always remove from the active cameras dictionary
-                            del globals.active_cameras[camera_name]
-                            
-                    except Exception as e:
-                        print(f"Warning: Error cleaning up camera {camera_name}: {e}")
-            
-            print("Camera calibration cleanup completed")
-        except Exception as e:
-            print(f"Warning: Error during camera cleanup: {e}")
-
     def calibrate_camera(self, calibration_profile) -> bool:
         """Calibrate the camera using ArUco markers."""
         if not globals.robot_initialized:
@@ -479,23 +447,17 @@ class SettingsModel:
                 print("Camera calibration completed successfully!")
                 # Reset calibration state
                 globals.calibration_active = False
-                # Clean up any camera resources used during calibration
-                self._cleanup_calibration_cameras()
                 return True
             else:
                 print("Insufficient calibration points collected.")
                 # Reset calibration state
                 globals.calibration_active = False
-                # Clean up any camera resources even on failure
-                self._cleanup_calibration_cameras()
                 return False
             
         except Exception as e:
             print(f"Error in calibrating camera: {e}")
             # Reset calibration state
             globals.calibration_active = False
-            # Clean up any camera resources even on error
-            self._cleanup_calibration_cameras()
             return False
     
     def placeholder_function_2(self) -> bool:
