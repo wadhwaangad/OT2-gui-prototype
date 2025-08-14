@@ -399,12 +399,13 @@ class SettingsModel:
             print("Starting initial marker detection phase...")
             while True:
                 if globals.calibration_active is False:
+                    globals.calibration_active = False
+                    globals.calibration_frame = None
                     return False
                 frame = self.frame_capturer.capture_frame(OverviewCameraName)
                 if frame is None:
                     print("Failed to capture frame during calibration")
                     continue
-                
                 # Draw overlay
                 frame = self._draw_calibration_overlay(frame)
                 
@@ -417,7 +418,7 @@ class SettingsModel:
                     cv2.putText(frame, f"Area of marker: {cv2.contourArea(marker_corners[0]):.2f}", 
                                (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                 
-                globals.calibration_frame = frame
+                globals.calibration_frame = frame.copy()
                 if keyboard.is_pressed('q'):
                     current_position = globals.robot_api.get_position(verbose=False)[0]
                     calib_origin = (current_position['x'], current_position['y'], current_position['z'])

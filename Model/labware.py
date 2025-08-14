@@ -20,7 +20,7 @@ from ultralytics import YOLO
 import pandas as pd
 
 # Camera name constants - using user labels that match controller
-OverviewCameraName = "overview_cam"  # User label for overview camera
+OverviewCameraName = "overview_cam_2"  # User label for overview camera
 UnderviewCameraName = "underview_cam"  # User label for underview camera
 
 class LabwareModel:

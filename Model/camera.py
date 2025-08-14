@@ -29,9 +29,10 @@ class CameraManagerWindows:
             self.graph = FilterGraph()
             self.devices = self.graph.get_input_devices()
             self.device_to_index = {name: idx for idx, name in enumerate(self.devices)}
-            print(f"Refreshed camera devices: {len(self.devices)} found")
+            # print(f"Refreshed camera devices: {len(self.devices)} found")
             for i, device in enumerate(self.devices):
-                print(f"  {i}: {device}")
+                # print(f"  {i}: {device}")
+                pass
         except Exception as e:
             print(f"Error refreshing camera devices: {e}")
             # Fallback to empty lists if refresh fails
@@ -273,26 +274,16 @@ class CaptureWorker(QObject):
         """Start capturing frames."""
         try:
             print(f"Attempting to open camera at index {self.camera_id}")
-            
-            # Try different backends in order of preference for Windows
-            backends_to_try = [
-                cv2.CAP_DSHOW,    # DirectShow (default on Windows)
-            ]
-            
+           
             camera_opened = False
-            for backend in backends_to_try:
-                try:
-                    self.cap = cv2.VideoCapture(self.camera_id)
-                    if self.cap.isOpened():
-                        print(f"Successfully opened camera with backend: {backend}")
-                        camera_opened = True
-                        break
-                    else:
-                        print(f"Failed to open camera with backend: {backend}")
-                        if self.cap:
-                            self.cap.release()
-                except Exception as e:
-                    print(f"Exception with backend {backend}: {e}")
+            try:
+                self.cap = cv2.VideoCapture(self.camera_id)
+                if self.cap.isOpened():
+                    camera_opened = True
+                else:
+                    if self.cap:
+                        self.cap.release()
+            except Exception as e:
                     if self.cap:
                         self.cap.release()
             

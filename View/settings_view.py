@@ -401,8 +401,10 @@ class CameraCalibrationWindow(QDialog):
     
     def update_frame(self):
         """Update the video frame."""
-        if self.camera_name in globals.active_cameras:
-            frame = self.controller.get_calibration_frame()
+        # Get the calibration frame directly without checking active_cameras
+        frame = self.controller.get_calibration_frame()
+        
+        if frame is not None:
             self.video_display.set_frame(frame)
     
     def reset_view(self):
