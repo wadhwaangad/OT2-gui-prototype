@@ -13,6 +13,7 @@ import json
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from paths import CAM_CONFIGS_DIR
 from Model.manual_movement import ManualMovementModel
+from Model.cuboid_picking import CuboidPickingModel
 import Model.globals as globals
 import time
 from PyQt6.QtCore import QObject
@@ -31,6 +32,7 @@ class MainController(QObject):
         self.settings_model = SettingsModel()
         self.labware_model = LabwareModel()
         self.manual_movement_model = ManualMovementModel()
+        self.cuboid_picking_model = CuboidPickingModel()
         
         # Set frame emitter for models that need it
         self._inject_frame_emitter_dependencies()
@@ -666,6 +668,20 @@ class MainController(QObject):
     def get_blow_out_params(self):
         """Get current blow out parameters."""
         return self.manual_movement_model.get_blow_out_params()
+    
+    def start_cuboid_picking(self, well_plan, config_data: Dict[str, Any]) -> bool:
+        try:
+            self.cuboid_picking_model.start_cuboid_picking(
+            well_plan, 
+            config_data)
+            return True
+        except Exception as e:
+            print(f"Error starting cuboid picking: {e}")
+            return False
+    def get_default_picking_config(self) -> Dict[str, Any]:
+        """Get the default configuration for cuboid picking."""
+        return self.cuboid_picking_model.get_default_picking_config()
+
 
     # Cleanup methods
     def cleanup(self):

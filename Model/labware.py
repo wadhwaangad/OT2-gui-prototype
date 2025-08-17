@@ -489,6 +489,7 @@ class LabwareModel:
 
             # Step 3: Capture and analyze overview camera image
             frame = self.frame_capturer.capture_frame(OverviewCameraName)
+            frame = globals.frame_ops.undistort_frame(frame)
             if frame is None:
                 raise AssertionError("Failed to capture frame from overview camera.")
                 

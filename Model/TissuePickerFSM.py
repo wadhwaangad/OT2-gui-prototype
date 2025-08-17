@@ -32,12 +32,9 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from View.zoomable_video_widget import VideoDisplayWidget
+from View.cuboidpicking_view import TissuePickerDisplayWindow
 
 KEYBOARD_AVAILABLE = True
-
-
-
-
 
 class RobotState(Enum):
     IDLE = 'idle'
@@ -53,19 +50,16 @@ class RobotState(Enum):
     COMPLETED = 'completed'
     
 class TissuePickerFSM():
-    def __init__(self, config: pp.PickingConfig, routine: pp.Routine, logger: pp.MarkdownLogger, controller=None):
+    def __init__(self, config: pp.PickingConfig, routine: pp.Routine, logger: pp.MarkdownLogger):
         self.state = RobotState.IDLE
-        self.display_window = TissuePickerDisplayWindow("Tissue Picker Vision", controller)
+        self.display_window = TissuePickerDisplayWindow("Tissue Picker Vision")
         self.logger = logger
         self.running = True
         self.paused = False
         self.keyboard_lock = threading.Lock()
         self.keyboard_hooks = []
-        self.controller = controller  # Reference to MainController for camera access
-        
-        # Get frame capturer with controller's frame emitter if available
-        frame_emitter = controller.get_frame_emitter() if controller else None
-        self.frame_capturer = get_frame_capturer(frame_emitter)
+        # Get frame capturer
+        self.frame_capturer = get_frame_capturer()
 
         self.config = config
         self.routine = routine
@@ -277,7 +271,8 @@ class TissuePickerFSM():
         while self.paused and self.running:
             try:
                 # Use frame capturer instead of direct camera read
-                frame = self.frame_capturer.capture_frame("HD USB CAMERA")
+                frame = self.frame_capturer.capture_frame("overview_cam_2")
+                frame = globals.frame_ops.undistort_frame(frame)
                 if frame is None:
                     continue
                     
@@ -285,7 +280,9 @@ class TissuePickerFSM():
                 plot_frame = frame.copy()
                 self.cv_pipeline(frame)
                 self.draw_annotations(plot_frame)
-                self.display_window.send_frame(plot_frame)
+                
+                # Update global frame for display elsewhere
+                globals.cuboid_picking_frame = plot_frame.copy()
             except Exception as e:
                 print(f"Error in idle state: {e}")
                 self.running = False
@@ -299,7 +296,8 @@ class TissuePickerFSM():
         time.sleep(0.75)
         
         # Use frame capturer instead of direct camera read
-        frame = self.frame_capturer.capture_frame("HD USB CAMERA")
+        frame = self.frame_capturer.capture_frame("overview_cam_2")
+        frame = globals.frame_ops.undistort_frame(frame)
         if frame is not None:
             self.current_frame = globals.frame_ops.undistort_frame(frame)
             self.state = RobotState.ANALYZE_FRAME
@@ -328,7 +326,9 @@ class TissuePickerFSM():
         self.logger.log_table(self.cuboid_choice.loc[:, self.cuboid_choice.columns != 'contour'], title=f"Filling well {next_well}")
         plot_frame = self.current_frame.copy()
         self.draw_annotations(plot_frame)
-        self.display_window.send_frame(plot_frame)
+        
+        # Update global frame for display elsewhere
+        globals.cuboid_picking_frame = plot_frame.copy()
         
         self.state = RobotState.APPROACH_TARGET
 
@@ -354,7 +354,8 @@ class TissuePickerFSM():
         time.sleep(0.75)
         
         # Use frame capturer instead of direct camera read
-        frame = self.frame_capturer.capture_frame("HD USB CAMERA")
+        frame = self.frame_capturer.capture_frame("overview_cam_2")
+        frame = globals.frame_ops.undistort_frame(frame)
         if frame is not None:
             self.current_frame = globals.frame_ops.undistort_frame(frame)
             self.cv_pipeline(self.current_frame)
@@ -387,7 +388,8 @@ class TissuePickerFSM():
         else:
             self.state = RobotState.TRANSFER_TO_WELL
 
-        self.display_window.send_frame(plot_frame)
+        # Update global frame for display elsewhere
+        globals.cuboid_picking_frame = plot_frame.copy()
         
 
     def state_deposit_liquid_back(self):

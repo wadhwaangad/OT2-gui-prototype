@@ -31,9 +31,7 @@ calibration_active = False
 robot_coords = []
 camera_coords = []
 tip_calibration_frame = None
+cuboid_picking_frame = None  # Frame with annotations from the tissue picker FSM process - updated in real-time during picking
 calibration_profile= "checkerboard"
-if "HD USB CAMERA" in active_cameras and active_cameras["HD USB CAMERA"] is not None:
-    frame_ops = frameOperations(*active_cameras["HD USB CAMERA"].shape[0:-1])
-else:
-    frame_ops = None
+frame_ops = frameOperations(2592,1944)
 default_focus = 900

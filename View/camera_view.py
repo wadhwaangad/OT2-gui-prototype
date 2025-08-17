@@ -263,7 +263,7 @@ class CameraTestWindow(QDialog):
         
         # Only stop the actual camera capture if no other viewers are using it
         viewer_count = self.controller.get_camera_viewer_count(self.camera_name)
-        if viewer_count == 0:
+        if viewer_count == 0 and not globals.calibration_active:
             print(f"No more viewers for {self.camera_name}, stopping camera capture")
             self.controller.stop_camera_capture(self.camera_name)
     
@@ -754,7 +754,7 @@ class CameraView(QWidget):
             
             # Only stop the actual camera capture if no other viewers are using it
             viewer_count = self.controller.get_camera_viewer_count(camera_name)
-            if viewer_count == 0:
+            if viewer_count == 0 and not globals.calibration_active:
                 print(f"No more viewers for {camera_name}, stopping camera capture")
                 self.controller.stop_camera_capture(camera_name)
             

@@ -54,8 +54,7 @@ class CuboidPickingModel:
         """Set reference to the main controller."""
         self.controller = controller
     
-    def start_cuboid_picking(self, well_plan, config_data: Dict[str, Any], plate_type: int, 
-                           fill_strategy: str = "horizontal", calibration_profile: str = "standardDeck") -> bool:
+    def start_cuboid_picking(self, well_plan, config_data: Dict[str, Any]) -> bool:
         """Start cuboid picking procedure using the TissuePickerFSM."""
         try:
             if self.is_picking_active:
@@ -64,17 +63,6 @@ class CuboidPickingModel:
             
             # Create destination and routine
             dest = picking_procedure.Destination(plate_type)
-            
-            # Convert DataFrame to well_plan dictionary if needed
-            if hasattr(well_plan, 'index'):  # It's a DataFrame
-                well_plan_dict = {
-                    f"{row}{col}": well_plan.loc[row, col] 
-                    for row in well_plan.index 
-                    for col in well_plan.columns 
-                    if well_plan.loc[row, col] > 0
-                }
-            else:
-                well_plan_dict = well_plan
             
             # Create routine
             routine = picking_procedure.Routine(dest, well_plan_dict, fill_strategy=fill_strategy)
@@ -91,7 +79,7 @@ class CuboidPickingModel:
             logger.log_section("Execution start:")
             
             # Create FSM
-            self.tissue_picker_fsm = TissuePickerFSM(picking_config, routine, logger, controller=self.controller)
+            self.tissue_picker_fsm = TissuePickerFSM(picking_config, routine, logger)
             self.is_picking_active = True
             
             # Start FSM in its own thread (not using Worker since FSM has its own threading logic)
@@ -115,31 +103,6 @@ class CuboidPickingModel:
             self.tissue_picker_fsm = None
             raise e
     
-    def stop_cuboid_picking(self) -> bool:
-        """Stop the current cuboid picking procedure."""
-        try:
-            if self.tissue_picker_fsm and self.is_picking_active:
-                # Stop the FSM
-                self.tissue_picker_fsm.running = False
-                
-                # Wait for FSM thread to finish
-                if self.fsm_thread and self.fsm_thread.is_alive():
-                    self.fsm_thread.join(timeout=5.0)  # Wait up to 5 seconds
-                
-                self.tissue_picker_fsm = None
-                self.fsm_thread = None
-                self.is_picking_active = False
-                print("Cuboid picking procedure stopped")
-                return True
-            else:
-                print("No active cuboid picking procedure to stop")
-                return False
-        except Exception as e:
-            print(f"Error stopping cuboid picking: {e}")
-            self.is_picking_active = False
-            self.tissue_picker_fsm = None
-            self.fsm_thread = None
-            raise e
     
     def get_default_picking_config(self) -> Dict[str, Any]:
         """Get default picking configuration based on PickingConfig dataclass."""

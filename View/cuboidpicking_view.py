@@ -19,6 +19,7 @@ import Model.globals as globals
 import Model.picking_procedure as picking_procedure
 import keyboard 
 from View.zoomable_video_widget import VideoDisplayWidget
+import Model.globals as globals
 KEYBOARD_AVAILABLE = True
 class WellWidget(QFrame):
     """Individual well widget with enhanced animation and interaction for cuboid assignment."""
@@ -1116,8 +1117,9 @@ class CuboidPickingView(QWidget):
         super().__init__(parent)
         self.controller = controller
         self.wellplate_grids = {}
-        self.picking_settings = {}
+        self.picking_settings = self.controller.get_default_picking_config()
         self.current_wellplate_name = ""
+        self.tissue_picker_window = None  # Initialize tissue picker display window
         self.setup_ui()
         self.load_wellplates()
     
@@ -1400,57 +1402,29 @@ class CuboidPickingView(QWidget):
             return
         
         try:
+
+            # Open TissuePickerDisplayWindow
+            self.tissue_picker_window = TissuePickerDisplayWindow(
+                title="Tissue Picker Vision Display",
+                controller=self.controller,
+                parent=self
+            )
+            self.tissue_picker_window.start()
+            self.tissue_picker_window.send_status("Initializing picking procedure...", (0, 255, 255))  # Cyan status
+            
             # Extract plate type from well count
             well_count = current_grid.well_count
             
             # Create well plan DataFrame
             well_df = current_grid.get_cuboid_assignment_matrix()
             
-            # Get picking configuration with settings
-            config_data = self.controller.get_default_picking_config()
-            config_data.update({
-                'vol': self.picking_settings.get('vol', 25),
-                'flow_rate': self.picking_settings.get('flow_rate', 25),
-                'minimum_distance': self.picking_settings.get('minimum_distance', 2.0),
-                'wait_time_after_deposit': self.picking_settings.get('wait_time_after_deposit', 1.0),
-                'circle_center': self.picking_settings.get('circle_center', (640, 480)),
-                'circle_radius': self.picking_settings.get('circle_radius', 200)
-            })
-            
-            # Start cuboid picking procedure
-            def on_picking_result(success):
-                if success:
-                    QMessageBox.information(self, "Picking Started", 
-                                          f"Cuboid picking procedure started successfully!\n\n"
-                                          f"Wellplate: {self.current_wellplate_name}\n"
-                                          f"Assigned Wells: {len([w for w, c in current_grid.well_cuboid_counts.items() if c > 0])}\n"
-                                          f"Total Cuboids: {total_cuboids}")
-                    self.status_label.setText(f"Picking in progress: {total_cuboids} cuboids")
-                    self.pick_cuboids_btn.setText("Stop Picking")
-                    self.pick_cuboids_btn.clicked.disconnect()
-                    self.pick_cuboids_btn.clicked.connect(self.stop_cuboid_picking)
-                else:
-                    QMessageBox.critical(self, "Error", "Failed to start cuboid picking procedure")
-            
-            def on_picking_error(error):
-                QMessageBox.critical(self, "Error", f"Error starting picking procedure: {error}")
-            
-            def on_picking_finished():
-                self.pick_cuboids_btn.setText("Pick Cuboids")
-                self.pick_cuboids_btn.clicked.disconnect()
-                self.pick_cuboids_btn.clicked.connect(self.start_cuboid_picking)
-                self.status_label.setText("Picking procedure completed")
+            # Use the already configured picking settings (initialized with defaults and updated by user)
+            config_data = self.picking_settings
             
             # Start the picking procedure using the controller
             success = self.controller.start_cuboid_picking(
                 well_plan=well_df,
                 config_data=config_data,
-                plate_type=well_count,
-                fill_strategy="horizontal",
-                calibration_profile="standardDeck",
-                on_result=on_picking_result,
-                on_error=on_picking_error,
-                on_finished=on_picking_finished
             )
             
             if not success:
@@ -1505,7 +1479,6 @@ class TissuePickerDisplayWindow(QDialog):
         super().__init__(parent)
         self.controller = controller
         self.is_active = False
-        self.current_frame = None
         self.status_text = ""
         self.status_color = (255, 255, 255)
 
@@ -1586,11 +1559,6 @@ class TissuePickerDisplayWindow(QDialog):
         self.timer.stop()
         self.close()
     
-    def send_frame(self, frame):
-        """Send a frame to be displayed."""
-        if frame is not None:
-            self.current_frame = frame.copy()
-    
     def send_status(self, status_text: str, color: tuple = (255, 255, 255)):
         """Send status text to be displayed."""
         self.status_text = status_text
@@ -1603,26 +1571,24 @@ class TissuePickerDisplayWindow(QDialog):
     
     def update_display(self):
         """Update the video display."""
-        if self.is_active and self.current_frame is not None:
-            self.video_display.set_frame(self.current_frame)
+        if self.is_active and globals.cuboid_picking_frame is not None:
+            self.video_display.set_frame(globals.cuboid_picking_frame)
     
     def toggle_pause(self):
         """Toggle pause/resume - emulate 'p' key press."""
-        if KEYBOARD_AVAILABLE:
-            try:
-                import keyboard
-                keyboard.send('p')
-            except Exception as e:
-                print(f"Could not send pause command: {e}")
+        try:
+            import keyboard
+            keyboard.send('p')
+        except Exception as e:
+            print(f"Could not send pause command: {e}")
     
     def emergency_stop(self):
         """Emergency stop - emulate 'ESC' key press."""
-        if KEYBOARD_AVAILABLE:
-            try:
-                import keyboard
-                keyboard.send('esc')
-            except Exception as e:
-                print(f"Could not send stop command: {e}")
+        try:
+            import keyboard
+            keyboard.send('esc')
+        except Exception as e:
+            print(f"Could not send stop command: {e}")
     
     def reset_view(self):
         """Reset the video view."""
@@ -1632,5 +1598,4 @@ class TissuePickerDisplayWindow(QDialog):
         """Handle close event."""
         self.stop()
         event.accept()
-# Alias for backwards compatibility
-WellplateView = CuboidPickingView
+
