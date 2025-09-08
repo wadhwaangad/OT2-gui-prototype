@@ -1402,15 +1402,21 @@ class CuboidPickingView(QWidget):
             return
         
         try:
-
-            # Open TissuePickerDisplayWindow
+            # Open TissuePickerDisplayWindow BEFORE starting the FSM
             self.tissue_picker_window = TissuePickerDisplayWindow(
                 title="Tissue Picker Vision Display",
                 controller=self.controller,
                 parent=self
             )
+            
+            # Show the window first
             self.tissue_picker_window.start()
             self.tissue_picker_window.send_status("Initializing picking procedure...", (0, 255, 255))  # Cyan status
+            
+            # Update button to show stop functionality
+            self.pick_cuboids_btn.setText("Stop Picking")
+            self.pick_cuboids_btn.clicked.disconnect()
+            self.pick_cuboids_btn.clicked.connect(self.stop_cuboid_picking)
             
             # Extract plate type from well count
             well_count = current_grid.well_count
@@ -1418,7 +1424,7 @@ class CuboidPickingView(QWidget):
             # Create well plan DataFrame
             well_df = current_grid.get_cuboid_assignment_matrix()
             
-            # Use the already configured picking settings (initialized with defaults and updated by user)
+            # Use the already configured picking settings
             config_data = self.picking_settings
             
             # Start the picking procedure using the controller
@@ -1427,38 +1433,51 @@ class CuboidPickingView(QWidget):
                 config_data=config_data,
             )
             
-            if not success:
+            if success:
+                self.status_label.setText("Cuboid picking procedure started - check vision window")
+                # Connect to FSM status updates if available
+                if hasattr(self.controller, 'tissue_picker_fsm') and self.controller.tissue_picker_fsm:
+                    # Set the display window reference in the FSM for direct updates
+                    self.controller.tissue_picker_fsm.display_window = self.tissue_picker_window
+            else:
                 QMessageBox.critical(self, "Error", "Failed to initialize cuboid picking procedure")
-                
+                self.tissue_picker_window.stop()
+                self.reset_pick_button()
+            
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to start cuboid picking: {str(e)}")
-    
+            if self.tissue_picker_window:
+                self.tissue_picker_window.stop()
+            self.reset_pick_button()
+
+    def reset_pick_button(self):
+        """Reset the pick button to its original state."""
+        self.pick_cuboids_btn.setText("Pick Cuboids")
+        self.pick_cuboids_btn.clicked.disconnect()
+        self.pick_cuboids_btn.clicked.connect(self.start_cuboid_picking)
+
     def stop_cuboid_picking(self):
         """Stop the current cuboid picking procedure."""
         try:
-            def on_stop_result(success):
-                if success:
-                    QMessageBox.information(self, "Stopped", "Cuboid picking procedure stopped successfully")
-                else:
-                    QMessageBox.warning(self, "Warning", "No active picking procedure to stop")
-                    
-            def on_stop_error(error):
-                QMessageBox.critical(self, "Error", f"Error stopping picking procedure: {error}")
-                
-            def on_stop_finished():
-                self.pick_cuboids_btn.setText("Pick Cuboids")
-                self.pick_cuboids_btn.clicked.disconnect()
-                self.pick_cuboids_btn.clicked.connect(self.start_cuboid_picking)
-                self.status_label.setText("Picking procedure stopped")
+            # Stop the display window first
+            if self.tissue_picker_window:
+                self.tissue_picker_window.stop()
+                self.tissue_picker_window = None
             
-            self.controller.stop_cuboid_picking(
-                on_result=on_stop_result,
-                on_error=on_stop_error,
-                on_finished=on_stop_finished
-            )
+            # Stop the FSM procedure
+            if hasattr(self.controller, 'stop_cuboid_picking'):
+                success = self.controller.stop_cuboid_picking()
+                if success:
+                    self.status_label.setText("Cuboid picking procedure stopped")
+                else:
+                    self.status_label.setText("No active picking procedure to stop")
+            
+            # Reset button
+            self.reset_pick_button()
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to stop cuboid picking: {str(e)}")
+            self.reset_pick_button()
     
     def clear_grids(self):
         """Clear all existing wellplate grids with proper cleanup."""
@@ -1481,6 +1500,7 @@ class TissuePickerDisplayWindow(QDialog):
         self.is_active = False
         self.status_text = ""
         self.status_color = (255, 255, 255)
+        self.current_frame = None
 
         self.setWindowTitle(title)
         self.setMinimumSize(800, 600)
@@ -1500,6 +1520,12 @@ class TissuePickerDisplayWindow(QDialog):
         self.status_label.setStyleSheet("color: #0066cc; padding: 5px;")
         info_layout.addWidget(self.status_label)
         info_layout.addStretch()
+
+        # Add FSM state info
+        self.state_label = QLabel("FSM State: Idle")
+        self.state_label.setFont(QFont("Arial", 10))
+        self.state_label.setStyleSheet("color: #666; padding: 5px;")
+        info_layout.addWidget(self.state_label)
 
         # Control group
         controls_group = QGroupBox("Controls")
@@ -1527,6 +1553,7 @@ class TissuePickerDisplayWindow(QDialog):
 
         # Video display
         self.video_display = VideoDisplayWidget()
+        self.video_display.setMinimumSize(640, 480)
 
         # Button box
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
@@ -1552,12 +1579,15 @@ class TissuePickerDisplayWindow(QDialog):
         self.show()
         self.raise_()  # Bring window to front
         self.activateWindow()  # Make it the active window
+        print("DEBUG: TissuePickerDisplayWindow started and shown")
     
     def stop(self):
         """Stop the display window."""
         self.is_active = False
-        self.timer.stop()
+        if hasattr(self, 'timer'):
+            self.timer.stop()
         self.close()
+        print("DEBUG: TissuePickerDisplayWindow stopped")
     
     def send_status(self, status_text: str, color: tuple = (255, 255, 255)):
         """Send status text to be displayed."""
@@ -1569,33 +1599,70 @@ class TissuePickerDisplayWindow(QDialog):
         self.status_label.setText(f"Status: {status_text}")
         self.status_label.setStyleSheet(f"color: {color_hex}; font-weight: bold; padding: 5px;")
     
+    def update_fsm_state(self, state_name: str):
+        """Update the FSM state display."""
+        self.state_label.setText(f"FSM State: {state_name}")
+    
     def update_display(self):
         """Update the video display."""
-        if self.is_active and globals.cuboid_picking_frame is not None:
-            self.video_display.set_frame(globals.cuboid_picking_frame)
+        if not self.is_active:
+            return
+            
+        # Try to get frame from globals
+        frame = None
+        try:
+            if hasattr(globals, 'cuboid_picking_frame') and globals.cuboid_picking_frame is not None:
+                frame = globals.cuboid_picking_frame.copy()  # Make a copy to avoid threading issues
+        except Exception as e:
+            print(f"DEBUG: Error getting frame from globals: {e}")
+        
+        # Update display if we have a frame
+        if frame is not None:
+            try:
+                self.video_display.set_frame(frame)
+                self.current_frame = frame
+            except Exception as e:
+                print(f"DEBUG: Error setting frame in video display: {e}")
+        
+        # Update FSM state if controller is available
+        if self.controller and hasattr(self.controller, 'get_procedure_status'):
+            try:
+                status = self.controller.get_procedure_status()
+                if status.get('active', False):
+                    state_name = status.get('state', 'Unknown')
+                    current_well = status.get('current_well', 'None')
+                    self.update_fsm_state(f"{state_name} (Well: {current_well})")
+                else:
+                    self.update_fsm_state("Inactive")
+            except Exception as e:
+                print(f"DEBUG: Error getting FSM status: {e}")
     
     def toggle_pause(self):
         """Toggle pause/resume - emulate 'p' key press."""
         try:
-            import keyboard
-            keyboard.send('p')
+            if KEYBOARD_AVAILABLE:
+                keyboard.send('p')
+                print("DEBUG: Sent pause command")
         except Exception as e:
             print(f"Could not send pause command: {e}")
     
     def emergency_stop(self):
         """Emergency stop - emulate 'ESC' key press."""
         try:
-            import keyboard
-            keyboard.send('esc')
+            if KEYBOARD_AVAILABLE:
+                keyboard.send('esc')
+                print("DEBUG: Sent emergency stop command")
         except Exception as e:
             print(f"Could not send stop command: {e}")
     
     def reset_view(self):
         """Reset the video view."""
         self.video_display.reset_view()
+        print("DEBUG: Reset video view")
     
     def closeEvent(self, event):
         """Handle close event."""
+        print("DEBUG: TissuePickerDisplayWindow close event")
         self.stop()
         event.accept()
 

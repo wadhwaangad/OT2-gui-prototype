@@ -97,13 +97,16 @@ class Routine:
             return wells
 
     def get_next_well(self):
-        """Returns the next well to be filled based on the strategy."""
-        for well in self.get_fill_order():
-            if self.filled_wells[well] < self.well_plan[well]:
-                self.current_well = well
-                return well
-        self.completed = True
-        return None
+        """Get the next well that needs to be filled."""
+        if self.current_well is None:
+            for well in self.well_plan.keys():
+                # Fix: Use direct dictionary access since these are dicts, not pandas objects
+                if self.filled_wells[well] < self.well_plan[well]:
+                    self.current_well = well
+                    return well
+            return None  # All wells are filled
+        else:
+            return self.current_well
 
     def update_well(self, success=True):
         """Updates well status after an attempt."""
@@ -130,7 +133,7 @@ def create_well_plan(plate_type):
 def test_func(x: int):
     return x
 
-@typechecked
+
 @dataclass
 class PickingConfig:
     vol: float
@@ -148,7 +151,7 @@ class PickingConfig:
     well_offset_y: float = -0.9 #384 well plate
 
     # ----------------------Video configs-----------------------
-    circle_center: tuple[int] = (1296, 972)
+    circle_center: tuple[int] = (1024, 768)
     circle_radius: int = 900
     contour_filter_window: tuple[int] = (30, 1000)  # min and max area for contour filtering
     aspect_ratio_window: tuple[float] = (0.75, 1.25)  # min and max aspect ratio for contour filtering

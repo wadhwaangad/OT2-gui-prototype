@@ -303,8 +303,10 @@ class CaptureWorker(QObject):
             actual_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             actual_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             
+            
             if actual_width != self.width or actual_height != self.height:
-                print(f"Warning: Requested resolution {self.width}x{self.height} not available, using {actual_width}x{actual_height}")
+                msg = f"Camera {self.camera_id} does not support requested resolution {self.width}x{self.height}, using {actual_width}x{actual_height}"
+                print(msg)
                 self.width = actual_width
                 self.height = actual_height
             

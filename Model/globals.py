@@ -33,5 +33,6 @@ camera_coords = []
 tip_calibration_frame = None
 cuboid_picking_frame = None  # Frame with annotations from the tissue picker FSM process - updated in real-time during picking
 calibration_profile= "checkerboard"
-frame_ops = frameOperations(2592,1944)
+frame_ops = frameOperations(2048,1536)
+frame_ops.load_camera_intrinsics(config_profile=calibration_profile, use_new_cam_mtx=True)
 default_focus = 900

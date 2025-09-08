@@ -330,7 +330,7 @@ class SettingsModel:
             globals.robot_api.move_to_coordinates((*calib_pt, 100), min_z_height=1, verbose=False)
             time.sleep(1)
             frame = self.frame_capturer.capture_frame(OverviewCameraName)
-            frame = globals.frame_ops.undistort_frame(frame)
+            #frame = globals.frame_ops.undistort_frame(frame)
             if frame is None:
                 print(f"Failed to capture frame at calibration point {calib_pt}")
                 continue
@@ -384,7 +384,7 @@ class SettingsModel:
             
             # Get initial frame using frame capturer
             initial_frame = self.frame_capturer.capture_frame(OverviewCameraName)
-            initial_frame = globals.frame_ops.undistort_frame(initial_frame)
+            #initial_frame = globals.frame_ops.undistort_frame(initial_frame)
             if initial_frame is None:
                 print("Failed to capture initial frame from overview camera")
                 return False
@@ -405,7 +405,7 @@ class SettingsModel:
                     globals.calibration_frame = None
                     return False
                 frame = self.frame_capturer.capture_frame(OverviewCameraName)
-                frame = globals.frame_ops.undistort_frame(frame)
+                #frame = globals.frame_ops.undistort_frame(frame)
                 if frame is None:
                     print("Failed to capture frame during calibration")
                     continue

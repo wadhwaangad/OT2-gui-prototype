@@ -8,8 +8,9 @@ from typing import Dict, Any, Optional, Callable
 from PyQt6.QtCore import QThread
 from Model.worker import Worker
 import Model.globals as globals
-import Model.picking_procedure as picking_procedure
+from Model.picking_procedure import PickingConfig, Destination, Routine, MarkdownLogger
 from Model.TissuePickerFSM import TissuePickerFSM
+import pandas as pd
 
 
 class CuboidPickingModel:
@@ -62,32 +63,53 @@ class CuboidPickingModel:
                 return False
             
             # Create destination and routine
-            dest = picking_procedure.Destination(plate_type)
+            plate_type  = 96
+            dest = Destination(plate_type)
             
-            # Create routine
-            routine = picking_procedure.Routine(dest, well_plan_dict, fill_strategy=fill_strategy)
+            # Convert DataFrame well_plan to dictionary format expected by Routine
+            if isinstance(well_plan, pd.DataFrame):
+                # Convert DataFrame to dictionary: {well_label: target_count}
+                well_plan_dict = {}
+                for row_label in well_plan.index:
+                    for col_label in well_plan.columns:
+                        well_label = f"{row_label}{col_label}"
+                        target_count = well_plan.loc[row_label, col_label]
+                        if target_count > 0:  # Only include wells with targets > 0
+                            well_plan_dict[well_label] = target_count
+            else:
+                well_plan_dict = well_plan  # Already a dictionary
+            
+            # Create routine with dictionary
+            routine = Routine(dest, well_plan_dict, fill_strategy="well_by_well")
+            print(f"Well plan dictionary: {well_plan_dict}")
             
             # Create picking configuration
-            picking_config = picking_procedure.PickingConfig.from_dict(config_data)
+            picking_config = PickingConfig.from_dict(config_data)
             
             # Create logger
-            logger = picking_procedure.MarkdownLogger(
+            logger = MarkdownLogger(
                 experiment_name="GUI-Cuboid-Picking",
                 settings=config_data,
                 well_plate=well_plan
             )
             logger.log_section("Execution start:")
             
-            # Create FSM
+            # Create FSM (without display window)
             self.tissue_picker_fsm = TissuePickerFSM(picking_config, routine, logger)
+            
             self.is_picking_active = True
             
             # Start FSM in its own thread (not using Worker since FSM has its own threading logic)
             def run_fsm():
                 try:
+                    print("DEBUG: About to start FSM...")
                     self.tissue_picker_fsm.start()
+                    print("DEBUG: FSM completed")
                 except Exception as e:
-                    print(f"FSM error: {e}")
+                    print(f"DEBUG: FSM error: {e}")
+                    import traceback
+                    traceback.print_exc()
+                finally:
                     self.is_picking_active = False
                     self.tissue_picker_fsm = None
             
@@ -99,10 +121,17 @@ class CuboidPickingModel:
             
         except Exception as e:
             print(f"Error starting cuboid picking: {e}")
+            import traceback
+            traceback.print_exc()
             self.is_picking_active = False
             self.tissue_picker_fsm = None
             raise e
-    
+
+    def set_display_window(self, display_window):
+        """Set the display window reference for the FSM (called from main thread)."""
+        if self.tissue_picker_fsm:
+            self.tissue_picker_fsm.display_window = display_window
+            print("DEBUG: Set display window reference in FSM")
     
     def get_default_picking_config(self) -> Dict[str, Any]:
         """Get default picking configuration based on PickingConfig dataclass."""
@@ -153,6 +182,37 @@ class CuboidPickingModel:
                 'state': 'Unknown',
                 'current_well': None
             }
+    
+    def stop_cuboid_picking(self) -> bool:
+        """Stop the current cuboid picking procedure."""
+        try:
+            if not self.is_procedure_active():
+                print("No active cuboid picking procedure to stop")
+                return False
+            
+            # Stop the FSM
+            if self.tissue_picker_fsm:
+                self.tissue_picker_fsm.running = False
+                if hasattr(self.tissue_picker_fsm, 'display_window') and self.tissue_picker_fsm.display_window:
+                    try:
+                        self.tissue_picker_fsm.display_window.stop()
+                    except Exception as e:
+                        print(f"Error stopping display window: {e}")
+        
+            # Wait for FSM thread to finish
+            if self.fsm_thread and self.fsm_thread.is_alive():
+                self.fsm_thread.join(timeout=2.0)
+            
+            self.is_picking_active = False
+            self.tissue_picker_fsm = None
+            self.fsm_thread = None
+            
+            print("Cuboid picking procedure stopped successfully")
+            return True
+            
+        except Exception as e:
+            print(f"Error stopping cuboid picking: {e}")
+            return False
     
     def cleanup(self):
         """Cleanup resources when shutting down."""

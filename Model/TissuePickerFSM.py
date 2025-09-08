@@ -51,34 +51,65 @@ class RobotState(Enum):
     
 class TissuePickerFSM():
     def __init__(self, config: pp.PickingConfig, routine: pp.Routine, logger: pp.MarkdownLogger):
-        self.state = RobotState.IDLE
-        self.display_window = TissuePickerDisplayWindow("Tissue Picker Vision")
-        self.logger = logger
-        self.running = True
-        self.paused = False
-        self.keyboard_lock = threading.Lock()
-        self.keyboard_hooks = []
-        # Get frame capturer
-        self.frame_capturer = get_frame_capturer()
+        print("DEBUG: Starting TissuePickerFSM initialization...")
+        
+        try:
+            self.state = RobotState.IDLE
+            print("DEBUG: Set initial state to IDLE")
+            
+            # Don't create display window here - it will be set from main thread
+            self.display_window = None
+            print("DEBUG: Display window will be set externally")
+            
+            self.logger = logger
+            self.running = True
+            self.paused = False
+            self.keyboard_lock = threading.Lock()
+            self.keyboard_hooks = []
+            print("DEBUG: Set basic properties")
+            
+            # Get frame capturer
+            self.frame_capturer = get_frame_capturer()
+            print("DEBUG: Got frame capturer")
 
-        self.config = config
-        self.routine = routine
-        self.cr = core.Core()
+            self.config = config
+            self.routine = routine
+            print("DEBUG: Set config and routine")
+            
+            self.cr = core.Core()
+            print("DEBUG: Created core.Core()")
 
-        # Use global calibration profile
-        self.calibration_data = utils.load_calibration_config(globals.calibration_profile)
-        self.tf_mtx = np.array(self.calibration_data['tf_mtx'])
-        self.calib_origin = np.array(self.calibration_data['calib_origin'])[:2]
-        self.offset = np.array(self.calibration_data['offset'])
-        self.size_conversion_ratio = self.calibration_data['size_conversion_ratio']
-        self.one_d_ratio = self.calibration_data['one_d_ratio']
+            # Use global calibration profile
+            print("DEBUG: Loading calibration data...")
+            self.calibration_data = utils.load_calibration_config(globals.calibration_profile)
+            print("DEBUG: Loaded calibration data")
+            
+            self.tf_mtx = np.array(self.calibration_data['tf_mtx'])
+            self.calib_origin = np.array(self.calibration_data['calib_origin'])[:2]
+            self.offset = np.array(self.calibration_data['offset'])
+            self.size_conversion_ratio = self.calibration_data['size_conversion_ratio']
+            self.one_d_ratio = self.calibration_data['one_d_ratio']
+            print("DEBUG: Set calibration arrays")
 
-        self.isolated = []
-        self.pickable_cuboids = []
-        self.world_coordinates = []
-        self.cuboid_choice = None
-        self.current_frame = None
-        self.current_well = self.routine.get_next_well()
+            # Initialize as empty DataFrames, not lists
+            import pandas as pd
+            self.isolated = pd.DataFrame()
+            self.pickable_cuboids = pd.DataFrame()
+            self.world_coordinates = []
+            self.cuboid_choice = None
+            self.current_frame = None
+            print("DEBUG: Initialized data structures")
+            
+            self.current_well = self.routine.get_next_well()
+            print(f"DEBUG: Got current well: {self.current_well}")
+            
+            print("DEBUG: TissuePickerFSM initialization completed successfully!")
+            
+        except Exception as e:
+            print(f"DEBUG: Error during TissuePickerFSM initialization: {e}")
+            import traceback
+            traceback.print_exc()
+            raise e
 
     def calculate_robot_coordinates(self, cX, cY, robot_x, robot_y):
         X_init, Y_init, _ = self.tf_mtx @ (cX, cY, 1)
@@ -93,8 +124,8 @@ class TissuePickerFSM():
         masked_frame = cv2.bitwise_and(frame, mask)
 
         gray = cv2.cvtColor(masked_frame, cv2.COLOR_BGR2GRAY)
-        blur = cv2.GaussianBlur(gray, (11, 11), 0) #was (11, 11)
-        thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,41,3) #was 4
+        blur = cv2.GaussianBlur(gray, (11, 11), 0)
+        thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,41,3)
         self.bubble_thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,25,5)
         kernel = np.ones((3,3),np.uint8)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
@@ -107,62 +138,77 @@ class TissuePickerFSM():
         self.cr.cuboids = filtered_contours
         self.cr.cuboid_dataframe(self.cr.cuboids)
 
-        cuboid_size_micron2 = self.cr.cuboid_df.area * self.size_conversion_ratio * 10e5
-        cuboid_diameter = 2 * np.sqrt(cuboid_size_micron2 / np.pi)
-        dist_mm = self.cr.cuboid_df.min_dist * self.one_d_ratio
-        self.cr.cuboid_df['diameter_microns'] = cuboid_diameter
-        self.cr.cuboid_df['min_dist_mm'] = dist_mm
+        # Initialize as empty DataFrames
+        self.pickable_cuboids = self.cr.cuboid_df.iloc[0:0].copy()
+        self.isolated = self.cr.cuboid_df.iloc[0:0].copy()
+
         # Check if the dataframe is not empty before applying operations
-        if len(self.cr.cuboid_df) > 0:
+        if not self.cr.cuboid_df.empty:
+            cuboid_size_micron2 = self.cr.cuboid_df['area'] * self.size_conversion_ratio * 10e5
+            cuboid_diameter = 2 * np.sqrt(cuboid_size_micron2 / np.pi)
+            dist_mm = self.cr.cuboid_df['min_dist'] * self.one_d_ratio
+            self.cr.cuboid_df['diameter_microns'] = cuboid_diameter
+            self.cr.cuboid_df['min_dist_mm'] = dist_mm
+            
             self.cr.cuboid_df['bubble'] = self.cr.cuboid_df.apply(lambda row: not bool(self.bubble_thresh[int(row['cY']), int(row['cX'])]), axis=1)
 
-            # Filter out elongated contours
-            self.pickable_cuboids = self.cr.cuboid_df.loc[(self.config.cuboid_size_theshold[0] < self.cr.cuboid_df['diameter_microns']) & 
-                                                (self.cr.cuboid_df['diameter_microns'] < self.config.cuboid_size_theshold[1]) &
-                                                ((self.cr.cuboid_df['aspect_ratio'] > self.config.aspect_ratio_window[0]) & 
-                                                    (self.cr.cuboid_df['aspect_ratio'] < self.config.aspect_ratio_window[1])) &
-                                                ((self.cr.cuboid_df['circularity'] > self.config.circularity_window[0]) &
-                                                    (self.cr.cuboid_df['circularity'] < self.config.circularity_window[1])) & 
-                                                (self.cr.cuboid_df['bubble'] != True)].copy()
+            # Filter out elongated contours - Fix boolean evaluation
+            size_filter = (self.cr.cuboid_df['diameter_microns'] > self.config.cuboid_size_theshold[0]) & (self.cr.cuboid_df['diameter_microns'] < self.config.cuboid_size_theshold[1])
+            aspect_filter = (self.cr.cuboid_df['aspect_ratio'] > self.config.aspect_ratio_window[0]) & (self.cr.cuboid_df['aspect_ratio'] < self.config.aspect_ratio_window[1])
+            circularity_filter = self.cr.cuboid_df['circularity'] > self.config.min_circularity
+            bubble_filter = self.cr.cuboid_df['bubble'] == False
+            
+            combined_filter = size_filter & aspect_filter & circularity_filter & bubble_filter
+            self.pickable_cuboids = self.cr.cuboid_df.loc[combined_filter].copy()
 
             # Check if cuboid centers are within the circle radius from the current circle center
-            self.pickable_cuboids['distance_to_center'] = self.pickable_cuboids.apply(
-                lambda row: np.sqrt((row['cX'] - self.config.circle_center[0])**2 + (row['cY'] - self.config.circle_center[1])**2), axis=1
-            )
-            self.pickable_cuboids = self.pickable_cuboids[self.pickable_cuboids['distance_to_center'] <= self.config.circle_radius]
-            self.isolated = self.pickable_cuboids.loc[self.pickable_cuboids.min_dist_mm > self.config.minimum_distance]
-        else:
-            self.pickable_cuboids = []
-            self.isolated = []
+            if not self.pickable_cuboids.empty:
+                self.pickable_cuboids['distance_to_center'] = self.pickable_cuboids.apply(
+                    lambda row: np.sqrt((row['cX'] - self.config.circle_center[0])**2 + (row['cY'] - self.config.circle_center[1])**2), axis=1
+                )
+                radius_filter = self.pickable_cuboids['distance_to_center'] <= self.config.circle_radius
+                self.pickable_cuboids = self.pickable_cuboids.loc[radius_filter].copy()
+                
+                isolation_filter = self.pickable_cuboids['min_dist_mm'] > self.config.minimum_distance
+                self.isolated = self.pickable_cuboids.loc[isolation_filter].copy()
 
     def draw_annotations(self, frame):
         cv2.circle(frame, self.config.circle_center, self.config.circle_radius + int(self.config.minimum_distance / self.one_d_ratio), (0, 0, 255), 2)
         cv2.circle(frame, self.config.circle_center, self.config.circle_radius, (0, 255, 0), 2)
         # Add a black rectangle behind the text
-        text_background_height = 250  # Adjust height to fit all text lines
-        text_background_width = 320  # Full width of the frame
+        text_background_height = 250
+        text_background_width = 320
         cv2.rectangle(frame, (0, 0), (text_background_width, text_background_height), (0, 0, 0), -1)
+        
         if self.routine.current_well is None:
             self.routine.get_next_well()
         cv2.putText(frame, f"Filling well: {self.routine.current_well}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        
         if self.paused:
             cv2.putText(frame, "Paused", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
         if self.cr.cuboids:
             cv2.drawContours(frame, self.cr.cuboids, -1, (0, 0, 255), 2)
-            cv2.drawContours(frame, self.pickable_cuboids.contour.values.tolist(), -1, (0, 255, 255), 2)
-            cv2.drawContours(frame, self.isolated.contour.values.tolist(), -1, (0, 255, 0), 2)
+            if not self.pickable_cuboids.empty:
+                cv2.drawContours(frame, self.pickable_cuboids['contour'].values.tolist(), -1, (0, 255, 255), 2)
+            if not self.isolated.empty:
+                cv2.drawContours(frame, self.isolated['contour'].values.tolist(), -1, (0, 255, 0), 2)
+        
         cv2.putText(frame, f"# Objects: {len(self.cr.cuboids)}", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         cv2.putText(frame, f"# Pickable: {len(self.pickable_cuboids)}", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         cv2.putText(frame, f"# Isolated: {len(self.isolated)}", (10, 190), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        cuboids_in_size_range = self.cr.cuboid_df.loc[(self.config.cuboid_size_theshold[0] < self.cr.cuboid_df['diameter_microns']) & 
-                                        (self.cr.cuboid_df['diameter_microns'] < self.config.cuboid_size_theshold[1])].copy()
-        cv2.putText(frame, f"# In size range: {len(cuboids_in_size_range)}", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        
+        # Fix the size range calculation
+        if not self.cr.cuboid_df.empty and 'diameter_microns' in self.cr.cuboid_df.columns:
+            size_filter = (self.cr.cuboid_df['diameter_microns'] > self.config.cuboid_size_theshold[0]) & (self.cr.cuboid_df['diameter_microns'] < self.config.cuboid_size_theshold[1])
+            cuboids_in_size_range = self.cr.cuboid_df.loc[size_filter].copy()
+            cv2.putText(frame, f"# In size range: {len(cuboids_in_size_range)}", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        else:
+            cv2.putText(frame, f"# In size range: 0", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-        if self.cuboid_choice is not None:
+        if self.cuboid_choice is not None and not self.cuboid_choice.empty:
             for idx, row in self.cuboid_choice.iterrows():
                 x, y, w, h = cv2.boundingRect(row['contour'])
-                # Calculate center and size of the bounding box
                 center_x = x + w / 2
                 center_y = y + h / 2
                 new_w = int(w * 1.25)
@@ -172,7 +218,7 @@ class TissuePickerFSM():
                 cv2.rectangle(frame, (new_x, new_y), (new_x + new_w, new_y + new_h), (0, 0, 0), 2)
 
         return frame
-    
+
     def _setup_keyboard_hooks(self):
         """Setup global keyboard hooks using the keyboard module"""
         if not KEYBOARD_AVAILABLE:
@@ -223,70 +269,99 @@ class TissuePickerFSM():
         
         # Setup keyboard hooks
         self._setup_keyboard_hooks()
-        self.display_window.start()
+        
+        # Don't start display window here - it's managed by the main thread
+        print("DEBUG: FSM starting main loop...")
         
         try:
             while self.running:
-                with self.keyboard_lock:
-                    if self.paused:
-                        time.sleep(0.1)
-                        continue
+                try:  # Add inner try-catch for each iteration
+                    with self.keyboard_lock:
+                        if self.paused:
+                            time.sleep(0.1)
+                            continue
                 
-                # Execute current state
-                if hasattr(self, f"state_{self.state.value}"):
-                    getattr(self, f"state_{self.state.value}")()
-                else:
-                    print(f"Error: Unknown state {self.state.value}")
-                    self.running = False
+                    # Execute current state
+                    if hasattr(self, f"state_{self.state.value}"):
+                        getattr(self, f"state_{self.state.value}")()
+                    else:
+                        print(f"Error: Unknown state {self.state.value}")
+                        self.running = False
                 
-                # Small delay to prevent overwhelming the output
-                time.sleep(0.1)
-        
+                    # Small delay to prevent overwhelming the output
+                    time.sleep(0.1)
+                
+                except Exception as e:
+                    print(f"Error in state {self.state.value}: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Decide whether to continue or stop based on error type
+                    if isinstance(e, (KeyError, AttributeError)):
+                        print("Critical error, stopping FSM")
+                        self.running = False
+                    else:
+                        print("Non-critical error, continuing...")
+                        time.sleep(1)  # Wait a bit before retrying
+    
         except KeyboardInterrupt:
             print("\n[CONTROL] Keyboard interrupt received. Shutting down...")
             self.running = False
-        
+    
         finally:
             # Cleanup keyboard hooks
             self._cleanup_keyboard_hooks()
-            self.display_window.stop()
             cv2.destroyAllWindows()
             print("\n=== Tissue Picker Robot FSM Stopped ===")
 
     def state_idle(self):
         print("Robot is idle. Press 'p' to continue...")
         self.paused = True  # Ensure the robot is paused in idle state
-        # Move to picking position
-        globals.robot_api.retract_axis('leftZ')
-        globals.robot_api.move_to_coordinates((self.calib_origin[0],self.calib_origin[1],115), min_z_height=self.config.dish_bottom, verbose=False)
-        # Turn off lights
-        current_status = globals.robot_api.get("lights", globals.robot_api.HEADERS)
-        current_status = json.loads(current_status.text)
-        is_on = current_status['on']
-        if is_on:
-            globals.robot_api.toggle_lights()
-        # self.display_process.send_status("Robot IDLE - Press 'p' to continue", (0, 0, 255))  # Commented out until implemented
-        self.display_window.send_status("Robot IDLE - Press 'p' to continue", (0, 0, 255))
+        
+        try:
+            # Move to picking position
+            globals.robot_api.retract_axis('leftZ')
+            globals.robot_api.move_to_coordinates((self.calib_origin[0],self.calib_origin[1],115), min_z_height=self.config.dish_bottom, verbose=False)
+            # Turn off lights
+            current_status = globals.robot_api.get("lights", globals.robot_api.HEADERS)
+            current_status = json.loads(current_status.text)
+            is_on = current_status['on']
+            if is_on:
+                globals.robot_api.toggle_lights()
+        except Exception as e:
+            print(f"Error setting up robot in idle state: {e}")
+
+        # Only send status if display window exists and is safe to use
+        try:
+            if self.display_window and hasattr(self.display_window, 'send_status'):
+                self.display_window.send_status("Robot IDLE - Press 'p' to continue", (0, 0, 255))
+        except Exception as e:
+            print(f"Error sending status to display window: {e}")
 
         while self.paused and self.running:
             try:
                 # Use frame capturer instead of direct camera read
                 frame = self.frame_capturer.capture_frame("overview_cam_2")
-                frame = globals.frame_ops.undistort_frame(frame)
                 if frame is None:
+                    time.sleep(0.1)
                     continue
                     
                 frame = globals.frame_ops.undistort_frame(frame)
+                if frame is None:
+                    time.sleep(0.1)
+                    continue
+                    
                 plot_frame = frame.copy()
                 self.cv_pipeline(frame)
                 self.draw_annotations(plot_frame)
                 
                 # Update global frame for display elsewhere
                 globals.cuboid_picking_frame = plot_frame.copy()
+                
             except Exception as e:
-                print(f"Error in idle state: {e}")
-                self.running = False
-                break
+                print(f"Error in idle state frame processing: {e}")
+                # Don't crash, just wait and try again
+                time.sleep(0.5)
+                continue
 
         self.state = RobotState.CAPTURE_FRAME
         self.start_time = time.time()
@@ -307,7 +382,8 @@ class TissuePickerFSM():
 
     def state_analyze_frame(self):
         self.cv_pipeline(self.current_frame)
-        if len(self.isolated) == 0:
+        # Fix: Use .empty instead of len() == 0
+        if self.isolated.empty:
             print("No isolated cuboids found. Pausing...")
             self.logger.log("No cuboids found in the selected region. Pausing...")
             self.state = RobotState.IDLE
@@ -315,15 +391,21 @@ class TissuePickerFSM():
 
         next_well = self.routine.get_next_well()
         cuboids_to_fill = self.routine.well_plan[next_well] - self.routine.filled_wells[next_well]
+        
         if not self.config.one_by_one:
+            # Fix: Use len() properly with DataFrame
             if len(self.isolated) > cuboids_to_fill:
                 self.cuboid_choice = self.isolated.sample(n=cuboids_to_fill)
             else:
-                self.cuboid_choice = self.isolated
+                self.cuboid_choice = self.isolated.copy()
         else:
             self.cuboid_choice = self.isolated.sample(n=1)
 
-        self.logger.log_table(self.cuboid_choice.loc[:, self.cuboid_choice.columns != 'contour'], title=f"Filling well {next_well}")
+        # Ensure we don't try to log empty DataFrames
+        if not self.cuboid_choice.empty:
+            log_columns = [col for col in self.cuboid_choice.columns if col != 'contour']
+            self.logger.log_table(self.cuboid_choice[log_columns], title=f"Filling well {next_well}")
+        
         plot_frame = self.current_frame.copy()
         self.draw_annotations(plot_frame)
         
@@ -367,17 +449,22 @@ class TissuePickerFSM():
         plot_frame = self.current_frame.copy()
         self.draw_annotations(plot_frame)
         miss_occurred = False
-        if self.cuboid_choice is not None:
+        if self.cuboid_choice is not None and not self.cuboid_choice.empty:
             for prev_x, prev_y in self.cuboid_choice[['cX', 'cY']].values:
                 cv2.circle(plot_frame, (int(prev_x), int(prev_y)), int(round(self.config.failure_threshold / self.one_d_ratio)), (255, 0, 0), 2)
-                check_miss_df = self.cr.cuboid_df.loc[(self.cr.cuboid_df['bubble'] != True)].copy()
-                distances = check_miss_df.apply(lambda row: np.sqrt((row['cX'] - prev_x)**2 + (row['cY'] - prev_y)**2), axis=1).to_numpy()
-                distances *= self.one_d_ratio
-                if any(distances <= self.config.failure_threshold):
-                    print(f"Miss detected at well {self.routine.current_well}.")
-                    self.routine.update_well(success=False)
-                    miss_occurred = True
-                    self.logger.log(f"Miss detected at well {self.routine.current_well}.")
+                
+                # Fix: Check if cr.cuboid_df exists and is not empty before filtering
+                if not self.cr.cuboid_df.empty and 'bubble' in self.cr.cuboid_df.columns:
+                    check_miss_df = self.cr.cuboid_df.loc[self.cr.cuboid_df['bubble'] == False].copy()
+                    
+                    if not check_miss_df.empty:
+                        distances = check_miss_df.apply(lambda row: np.sqrt((row['cX'] - prev_x)**2 + (row['cY'] - prev_y)**2), axis=1).to_numpy()
+                        distances *= self.one_d_ratio
+                        if any(distances <= self.config.failure_threshold):
+                            print(f"Miss detected at well {self.routine.current_well}.")
+                            self.routine.update_well(success=False)
+                            miss_occurred = True
+                            self.logger.log(f"Miss detected at well {self.routine.current_well}.")
 
             if not miss_occurred:
                 for _, _ in self.cuboid_choice[['cX', 'cY']].values:
