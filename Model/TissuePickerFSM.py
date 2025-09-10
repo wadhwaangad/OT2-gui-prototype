@@ -36,6 +36,7 @@ from View.cuboidpicking_view import TissuePickerDisplayWindow
 
 KEYBOARD_AVAILABLE = True
 
+
 class RobotState(Enum):
     IDLE = 'idle'
     CAPTURE_FRAME = 'capture_frame'
@@ -45,51 +46,43 @@ class RobotState(Enum):
     VERIFY_PICKUP = 'verify_pickup'
     DEPOSIT_BACK = 'deposit_liquid_back'
     TRANSFER_TO_WELL = 'transfer_to_well'
+    AUTO_SHAKE = 'auto_shake'
     PAUSED = 'paused'
     CANCELED = 'canceled'
     COMPLETED = 'completed'
     
 class TissuePickerFSM():
     def __init__(self, config: pp.PickingConfig, routine: pp.Routine, logger: pp.MarkdownLogger):
-        print("DEBUG: Starting TissuePickerFSM initialization...")
         
         try:
             self.state = RobotState.IDLE
-            print("DEBUG: Set initial state to IDLE")
             
             # Don't create display window here - it will be set from main thread
             self.display_window = None
-            print("DEBUG: Display window will be set externally")
             
             self.logger = logger
             self.running = True
             self.paused = False
             self.keyboard_lock = threading.Lock()
             self.keyboard_hooks = []
-            print("DEBUG: Set basic properties")
             
             # Get frame capturer
             self.frame_capturer = get_frame_capturer()
-            print("DEBUG: Got frame capturer")
 
             self.config = config
             self.routine = routine
-            print("DEBUG: Set config and routine")
+            
             
             self.cr = core.Core()
-            print("DEBUG: Created core.Core()")
 
             # Use global calibration profile
-            print("DEBUG: Loading calibration data...")
             self.calibration_data = utils.load_calibration_config(globals.calibration_profile)
-            print("DEBUG: Loaded calibration data")
             
             self.tf_mtx = np.array(self.calibration_data['tf_mtx'])
             self.calib_origin = np.array(self.calibration_data['calib_origin'])[:2]
             self.offset = np.array(self.calibration_data['offset'])
             self.size_conversion_ratio = self.calibration_data['size_conversion_ratio']
             self.one_d_ratio = self.calibration_data['one_d_ratio']
-            print("DEBUG: Set calibration arrays")
 
             # Initialize as empty DataFrames, not lists
             import pandas as pd
@@ -98,15 +91,11 @@ class TissuePickerFSM():
             self.world_coordinates = []
             self.cuboid_choice = None
             self.current_frame = None
-            print("DEBUG: Initialized data structures")
             
             self.current_well = self.routine.get_next_well()
-            print(f"DEBUG: Got current well: {self.current_well}")
-            
-            print("DEBUG: TissuePickerFSM initialization completed successfully!")
             
         except Exception as e:
-            print(f"DEBUG: Error during TissuePickerFSM initialization: {e}")
+            print(f"Error during TissuePickerFSM initialization: {e}")
             import traceback
             traceback.print_exc()
             raise e
@@ -124,9 +113,9 @@ class TissuePickerFSM():
         masked_frame = cv2.bitwise_and(frame, mask)
 
         gray = cv2.cvtColor(masked_frame, cv2.COLOR_BGR2GRAY)
-        blur = cv2.GaussianBlur(gray, (11, 11), 0)
-        thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,41,3)
-        self.bubble_thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,25,5)
+        blur = cv2.GaussianBlur(gray, (11, 11), 0) #was (11, 11)
+        thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,41,3) #was 4
+        self.bubble_thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,cv2.THRESH_BINARY_INV,35,5)
         kernel = np.ones((3,3),np.uint8)
         thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
         mask_inv = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
@@ -138,84 +127,78 @@ class TissuePickerFSM():
         self.cr.cuboids = filtered_contours
         self.cr.cuboid_dataframe(self.cr.cuboids)
 
-        # Initialize as empty DataFrames
-        self.pickable_cuboids = self.cr.cuboid_df.iloc[0:0].copy()
-        self.isolated = self.cr.cuboid_df.iloc[0:0].copy()
-
+        cuboid_size_micron2 = self.cr.cuboid_df.area * self.size_conversion_ratio * 10e5
+        cuboid_diameter = 2 * np.sqrt(cuboid_size_micron2 / np.pi)
+        dist_mm = self.cr.cuboid_df.min_dist * self.one_d_ratio
+        self.cr.cuboid_df['diameter_microns'] = cuboid_diameter
+        self.cr.cuboid_df['min_dist_mm'] = dist_mm
         # Check if the dataframe is not empty before applying operations
-        if not self.cr.cuboid_df.empty:
-            cuboid_size_micron2 = self.cr.cuboid_df['area'] * self.size_conversion_ratio * 10e5
-            cuboid_diameter = 2 * np.sqrt(cuboid_size_micron2 / np.pi)
-            dist_mm = self.cr.cuboid_df['min_dist'] * self.one_d_ratio
-            self.cr.cuboid_df['diameter_microns'] = cuboid_diameter
-            self.cr.cuboid_df['min_dist_mm'] = dist_mm
-            
+        if len(self.cr.cuboid_df) > 0:
             self.cr.cuboid_df['bubble'] = self.cr.cuboid_df.apply(lambda row: not bool(self.bubble_thresh[int(row['cY']), int(row['cX'])]), axis=1)
 
-            # Filter out elongated contours - Fix boolean evaluation
-            size_filter = (self.cr.cuboid_df['diameter_microns'] > self.config.cuboid_size_theshold[0]) & (self.cr.cuboid_df['diameter_microns'] < self.config.cuboid_size_theshold[1])
-            aspect_filter = (self.cr.cuboid_df['aspect_ratio'] > self.config.aspect_ratio_window[0]) & (self.cr.cuboid_df['aspect_ratio'] < self.config.aspect_ratio_window[1])
-            circularity_filter = self.cr.cuboid_df['circularity'] > self.config.min_circularity
-            bubble_filter = self.cr.cuboid_df['bubble'] == False
-            
-            combined_filter = size_filter & aspect_filter & circularity_filter & bubble_filter
-            self.pickable_cuboids = self.cr.cuboid_df.loc[combined_filter].copy()
+            # Filter out elongated contours
+            self.pickable_cuboids = self.cr.cuboid_df.loc[((self.config.cuboid_size_theshold[0] < self.cr.cuboid_df['diameter_microns']) & 
+                                                (self.cr.cuboid_df['diameter_microns'] < self.config.cuboid_size_theshold[1])) &
+                                                ((self.cr.cuboid_df['aspect_ratio'] > self.config.aspect_ratio_window[0]) & 
+                                                    (self.cr.cuboid_df['aspect_ratio'] < self.config.aspect_ratio_window[1])) &
+                                                ((self.cr.cuboid_df['circularity'] > self.config.circularity_window[0]) &
+                                                    (self.cr.cuboid_df['circularity'] < self.config.circularity_window[1])) & 
+                                                (self.cr.cuboid_df['bubble'] != True)].copy()
 
             # Check if cuboid centers are within the circle radius from the current circle center
-            if not self.pickable_cuboids.empty:
-                self.pickable_cuboids['distance_to_center'] = self.pickable_cuboids.apply(
-                    lambda row: np.sqrt((row['cX'] - self.config.circle_center[0])**2 + (row['cY'] - self.config.circle_center[1])**2), axis=1
-                )
-                radius_filter = self.pickable_cuboids['distance_to_center'] <= self.config.circle_radius
-                self.pickable_cuboids = self.pickable_cuboids.loc[radius_filter].copy()
-                
-                isolation_filter = self.pickable_cuboids['min_dist_mm'] > self.config.minimum_distance
-                self.isolated = self.pickable_cuboids.loc[isolation_filter].copy()
+            self.pickable_cuboids['distance_to_center'] = self.pickable_cuboids.apply(
+                lambda row: np.sqrt((row['cX'] - self.config.circle_center[0])**2 + (row['cY'] - self.config.circle_center[1])**2), axis=1
+            )
+            self.pickable_cuboids = self.pickable_cuboids[self.pickable_cuboids['distance_to_center'] <= self.config.circle_radius]
+            self.isolated = self.pickable_cuboids.loc[self.pickable_cuboids.min_dist_mm > self.config.minimum_distance]
+        else:
+            self.pickable_cuboids = []
+            self.isolated = []
 
     def draw_annotations(self, frame):
         cv2.circle(frame, self.config.circle_center, self.config.circle_radius + int(self.config.minimum_distance / self.one_d_ratio), (0, 0, 255), 2)
         cv2.circle(frame, self.config.circle_center, self.config.circle_radius, (0, 255, 0), 2)
         # Add a black rectangle behind the text
-        text_background_height = 250
-        text_background_width = 320
+        text_background_height = 250  # Adjust height to fit all text lines
+        text_background_width = 320  # Full width of the frame
         cv2.rectangle(frame, (0, 0), (text_background_width, text_background_height), (0, 0, 0), -1)
-        
         if self.routine.current_well is None:
             self.routine.get_next_well()
         cv2.putText(frame, f"Filling well: {self.routine.current_well}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        
         if self.paused:
             cv2.putText(frame, "Paused", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
         if self.cr.cuboids:
             cv2.drawContours(frame, self.cr.cuboids, -1, (0, 0, 255), 2)
-            if not self.pickable_cuboids.empty:
-                cv2.drawContours(frame, self.pickable_cuboids['contour'].values.tolist(), -1, (0, 255, 255), 2)
-            if not self.isolated.empty:
-                cv2.drawContours(frame, self.isolated['contour'].values.tolist(), -1, (0, 255, 0), 2)
-        
+            cv2.drawContours(frame, self.pickable_cuboids.contour.values.tolist(), -1, (0, 255, 255), 2)
+            cv2.drawContours(frame, self.isolated.contour.values.tolist(), -1, (0, 255, 0), 2)
+            if hasattr(self.cr.cuboid_df, 'bubble'):
+                bubble_contours = self.cr.cuboid_df[self.cr.cuboid_df['bubble']].contour.values.tolist()
+                if bubble_contours:
+                    cv2.drawContours(frame, bubble_contours, -1, (255, 0, 255), 2)  # Purple color for bubbles
         cv2.putText(frame, f"# Objects: {len(self.cr.cuboids)}", (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         cv2.putText(frame, f"# Pickable: {len(self.pickable_cuboids)}", (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         cv2.putText(frame, f"# Isolated: {len(self.isolated)}", (10, 190), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        
-        # Fix the size range calculation
-        if not self.cr.cuboid_df.empty and 'diameter_microns' in self.cr.cuboid_df.columns:
-            size_filter = (self.cr.cuboid_df['diameter_microns'] > self.config.cuboid_size_theshold[0]) & (self.cr.cuboid_df['diameter_microns'] < self.config.cuboid_size_theshold[1])
-            cuboids_in_size_range = self.cr.cuboid_df.loc[size_filter].copy()
-            cv2.putText(frame, f"# In size range: {len(cuboids_in_size_range)}", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        else:
-            cv2.putText(frame, f"# In size range: 0", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cuboids_in_size_range = self.cr.cuboid_df.loc[(self.config.cuboid_size_theshold[0] < self.cr.cuboid_df['diameter_microns']) & 
+                                        (self.cr.cuboid_df['diameter_microns'] < self.config.cuboid_size_theshold[1])].copy()
+        cv2.putText(frame, f"# In size range: {len(cuboids_in_size_range)}", (10, 230), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-        if self.cuboid_choice is not None and not self.cuboid_choice.empty:
+        if self.cuboid_choice is not None:
             for idx, row in self.cuboid_choice.iterrows():
-                x, y, w, h = cv2.boundingRect(row['contour'])
-                center_x = x + w / 2
-                center_y = y + h / 2
-                new_w = int(w * 1.25)
-                new_h = int(h * 1.25)
-                new_x = int(center_x - new_w / 2)
-                new_y = int(center_y - new_h / 2)
-                cv2.rectangle(frame, (new_x, new_y), (new_x + new_w, new_y + new_h), (0, 0, 0), 2)
+                rect = cv2.minAreaRect(row['contour'])  # ((center_x, center_y), (width, height), angle)
+                box = cv2.boxPoints(rect)
+                box = np.intp(box)  # Convert to integer coordinates
+                cv2.drawContours(frame, [box], 0, (0, 0, 0), 2)
+            # for idx, row in self.cuboid_choice.iterrows():
+                # x, y, w, h = cv2.boundingRect(row['contour'])
+                # # Calculate center and size of the bounding box
+                # center_x = x + w / 2
+                # center_y = y + h / 2
+                # new_w = int(w * 1.25)
+                # new_h = int(h * 1.25)
+                # new_x = int(center_x - new_w / 2)
+                # new_y = int(center_y - new_h / 2)
+                # cv2.rectangle(frame, (new_x, new_y), (new_x + new_w, new_y + new_h), (0, 0, 0), 2)
 
         return frame
 
@@ -270,9 +253,6 @@ class TissuePickerFSM():
         # Setup keyboard hooks
         self._setup_keyboard_hooks()
         
-        # Don't start display window here - it's managed by the main thread
-        print("DEBUG: FSM starting main loop...")
-        
         try:
             while self.running:
                 try:  # Add inner try-catch for each iteration
@@ -310,7 +290,6 @@ class TissuePickerFSM():
         finally:
             # Cleanup keyboard hooks
             self._cleanup_keyboard_hooks()
-            cv2.destroyAllWindows()
             print("\n=== Tissue Picker Robot FSM Stopped ===")
 
     def state_idle(self):
@@ -379,6 +358,20 @@ class TissuePickerFSM():
         else:
             print("Failed to capture frame, retrying...")
             time.sleep(0.1)
+            
+    def state_auto_shake(self):
+        openapi.retract_axis('leftZ')
+        openapi.move_to_coordinates((235, 223, 64.6), verbose=False)
+        for _ in range(3):
+            openapi.move_relative('x', -10)
+            openapi.move_relative('x', 10)
+            time.sleep(0.5)
+        openapi.move_relative('x', 2)
+        time.sleep(0.5)
+        openapi.move_relative('x', -2)
+        openapi.retract_axis('leftZ')
+        time.sleep(2)
+        self.state = RobotState.CAPTURE_FRAME
 
     def state_analyze_frame(self):
         self.cv_pipeline(self.current_frame)
@@ -386,7 +379,7 @@ class TissuePickerFSM():
         if self.isolated.empty:
             print("No isolated cuboids found. Pausing...")
             self.logger.log("No cuboids found in the selected region. Pausing...")
-            self.state = RobotState.IDLE
+            self.state = RobotState.AUTO_SHAKE
             return
 
         next_well = self.routine.get_next_well()
@@ -482,7 +475,7 @@ class TissuePickerFSM():
     def state_deposit_liquid_back(self):
         x,y = self.world_coordinates[0]  # Use the first coordinate for depositing back
         globals.robot_api.move_to_coordinates((x, y, self.config.pickup_height+20), min_z_height=self.config.dish_bottom, verbose=False, force_direct=True)
-        globals.robot_api.move_to_coordinates((x, y, self.config.pickup_height), min_z_height=self.config.dish_bottom, verbose=False, force_direct=True)
+        globals.robot_api.move_to_coordinates((x, y, self.config.pickup_height+0.5), min_z_height=self.config.dish_bottom, verbose=False, force_direct=True)
         globals.robot_api.dispense_in_place(flow_rate = self.config.flow_rate, volume = self.config.vol * len(self.world_coordinates))
         globals.robot_api.move_relative('z', 20)
 

@@ -256,184 +256,206 @@ class PickingSettingsWidget(QGroupBox):
     
     settings_changed = pyqtSignal(dict)  # Emit when settings change
     
-    def __init__(self, parent=None):
-        super().__init__("Picking Settings", parent)
-        self.settings = {
-            'vol': 10.0,
-            'dish_bottom': 65.6,
-            'pickup_offset': 0.5,
-            'flow_rate': 50.0,
-            'cuboid_size_theshold': (350, 550),
-            'failure_threshold': 0.5,
-            'minimum_distance': 1.7,
-            'wait_time_after_deposit': 0.3,
-            'one_by_one': False,
-            'well_offset_x': 0.0,
-            'well_offset_y': 0.0,
-            'deposit_offset_z': 0.2,
-            'destination_slot': 5,
-            'circle_center': (1296, 972),
-            'circle_radius': 900,
-            'contour_filter_window': (50, 3000),
-            'aspect_ratio_window': (0.75, 1.25),
-            'circularity_window': (0.6, 0.9)
-        }
-        self.input_widgets = {}
-        self.setup_ui()
-    
     def setup_ui(self):
-        """Setup the settings widget UI."""
-        layout = QVBoxLayout()
-        
-        # Create scroll area for all settings
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
-        # Container widget for all settings
-        container_widget = QWidget()
-        container_layout = QVBoxLayout(container_widget)
-        
-        # Basic settings
-        basic_group = QGroupBox("Basic Settings")
-        basic_layout = QFormLayout()
-        
+        # ...existing code...
+        # Movement settings
+        movement_group = QGroupBox("Movement Settings")
+        movement_layout = QFormLayout()
         # Volume
         vol_spin = QDoubleSpinBox()
         vol_spin.setRange(0.1, 100.0)
-        vol_spin.setValue(self.settings['vol'])
-        vol_spin.setSuffix(" μL")
-        vol_spin.setDecimals(1)
+        vol_spin.setValue(self.settings.get('vol', 10.0))
+        vol_spin.setSuffix(" μl")
+        vol_spin.setDecimals(2)
         self.input_widgets['vol'] = vol_spin
-        basic_layout.addRow("Volume:", vol_spin)
-        
+        movement_layout.addRow("Volume:", vol_spin)
         # Dish bottom
-        dish_spin = QDoubleSpinBox()
-        dish_spin.setRange(0.0, 200.0)
-        dish_spin.setValue(self.settings['dish_bottom'])
-        dish_spin.setSuffix(" mm")
-        dish_spin.setDecimals(1)
-        self.input_widgets['dish_bottom'] = dish_spin
-        basic_layout.addRow("Dish Bottom:", dish_spin)
-        
+        dish_bottom_spin = QDoubleSpinBox()
+        dish_bottom_spin.setRange(0.0, 100.0)
+        dish_bottom_spin.setValue(self.settings.get('dish_bottom', 66.1))
+        dish_bottom_spin.setSuffix(" mm")
+        dish_bottom_spin.setDecimals(2)
+        self.input_widgets['dish_bottom'] = dish_bottom_spin
+        movement_layout.addRow("Dish Bottom:", dish_bottom_spin)
         # Pickup offset
-        pickup_spin = QDoubleSpinBox()
-        pickup_spin.setRange(0.0, 5.0)
-        pickup_spin.setValue(self.settings['pickup_offset'])
-        pickup_spin.setSuffix(" mm")
-        pickup_spin.setDecimals(1)
-        self.input_widgets['pickup_offset'] = pickup_spin
-        basic_layout.addRow("Pickup Offset:", pickup_spin)
-        
+        pickup_offset_spin = QDoubleSpinBox()
+        pickup_offset_spin.setRange(-10.0, 10.0)
+        pickup_offset_spin.setValue(self.settings.get('pickup_offset', 0.5))
+        pickup_offset_spin.setSuffix(" mm")
+        pickup_offset_spin.setDecimals(2)
+        self.input_widgets['pickup_offset'] = pickup_offset_spin
+        movement_layout.addRow("Pickup Offset:", pickup_offset_spin)
         # Flow rate
-        flow_spin = QDoubleSpinBox()
-        flow_spin.setRange(1.0, 200.0)
-        flow_spin.setValue(self.settings['flow_rate'])
-        flow_spin.setSuffix(" μL/s")
-        flow_spin.setDecimals(1)
-        self.input_widgets['flow_rate'] = flow_spin
-        basic_layout.addRow("Flow Rate:", flow_spin)
-        
-        # Destination slot
-        slot_spin = QSpinBox()
-        slot_spin.setRange(1, 11)
-        slot_spin.setValue(self.settings['destination_slot'])
-        self.input_widgets['destination_slot'] = slot_spin
-        basic_layout.addRow("Destination Slot:", slot_spin)
-        
-        basic_group.setLayout(basic_layout)
-        container_layout.addWidget(basic_group)
-        
-        # Movement and positioning settings
-        movement_group = QGroupBox("Movement Settings")
-        movement_layout = QFormLayout()
-        
+        flow_rate_spin = QDoubleSpinBox()
+        flow_rate_spin.setRange(0.1, 500.0)
+        flow_rate_spin.setValue(self.settings.get('flow_rate', 50.0))
+        flow_rate_spin.setSuffix(" μl/s")
+        flow_rate_spin.setDecimals(2)
+        self.input_widgets['flow_rate'] = flow_rate_spin
+        movement_layout.addRow("Flow Rate:", flow_rate_spin)
         # Minimum distance
         dist_spin = QDoubleSpinBox()
         dist_spin.setRange(0.1, 10.0)
-        dist_spin.setValue(self.settings['minimum_distance'])
+        dist_spin.setValue(self.settings.get('minimum_distance', 1.7))
         dist_spin.setSuffix(" mm")
-        dist_spin.setDecimals(1)
+        dist_spin.setDecimals(2)
         self.input_widgets['minimum_distance'] = dist_spin
         movement_layout.addRow("Min Distance:", dist_spin)
-        
         # Failure threshold
         fail_spin = QDoubleSpinBox()
         fail_spin.setRange(0.1, 5.0)
-        fail_spin.setValue(self.settings['failure_threshold'])
+        fail_spin.setValue(self.settings.get('failure_threshold', 0.5))
         fail_spin.setSuffix(" mm")
-        fail_spin.setDecimals(1)
+        fail_spin.setDecimals(2)
         self.input_widgets['failure_threshold'] = fail_spin
         movement_layout.addRow("Failure Threshold:", fail_spin)
-        
         # Wait time
         wait_spin = QDoubleSpinBox()
         wait_spin.setRange(0.0, 5.0)
-        wait_spin.setValue(self.settings['wait_time_after_deposit'])
+        wait_spin.setValue(self.settings.get('wait_time_after_deposit', 0.5))
         wait_spin.setSuffix(" s")
-        wait_spin.setDecimals(1)
+        wait_spin.setDecimals(2)
         self.input_widgets['wait_time_after_deposit'] = wait_spin
         movement_layout.addRow("Wait Time:", wait_spin)
-        
         # One by one checkbox
         one_by_one_check = QCheckBox()
-        one_by_one_check.setChecked(self.settings['one_by_one'])
+        one_by_one_check.setChecked(self.settings.get('one_by_one', False))
         self.input_widgets['one_by_one'] = one_by_one_check
         movement_layout.addRow("One by One:", one_by_one_check)
-        
         movement_group.setLayout(movement_layout)
         container_layout.addWidget(movement_group)
-        
-        # Well offset settings
-        offset_group = QGroupBox("Well Offsets")
-        offset_layout = QFormLayout()
-        
+        # Deposit settings
+        deposit_group = QGroupBox("Deposit Settings")
+        deposit_layout = QFormLayout()
         # Well offset X
         well_x_spin = QDoubleSpinBox()
         well_x_spin.setRange(-10.0, 10.0)
-        well_x_spin.setValue(self.settings['well_offset_x'])
+        well_x_spin.setValue(self.settings.get('well_offset_x', -0.3))
         well_x_spin.setSuffix(" mm")
-        well_x_spin.setDecimals(1)
+        well_x_spin.setDecimals(2)
         self.input_widgets['well_offset_x'] = well_x_spin
-        offset_layout.addRow("Well Offset X:", well_x_spin)
-        
+        deposit_layout.addRow("Well Offset X:", well_x_spin)
         # Well offset Y
         well_y_spin = QDoubleSpinBox()
         well_y_spin.setRange(-10.0, 10.0)
-        well_y_spin.setValue(self.settings['well_offset_y'])
+        well_y_spin.setValue(self.settings.get('well_offset_y', -0.9))
         well_y_spin.setSuffix(" mm")
-        well_y_spin.setDecimals(1)
+        well_y_spin.setDecimals(2)
         self.input_widgets['well_offset_y'] = well_y_spin
-        offset_layout.addRow("Well Offset Y:", well_y_spin)
-        
+        deposit_layout.addRow("Well Offset Y:", well_y_spin)
         # Deposit offset Z
         deposit_z_spin = QDoubleSpinBox()
         deposit_z_spin.setRange(-5.0, 5.0)
-        deposit_z_spin.setValue(self.settings['deposit_offset_z'])
+        deposit_z_spin.setValue(self.settings.get('deposit_offset_z', 0.5))
         deposit_z_spin.setSuffix(" mm")
-        deposit_z_spin.setDecimals(1)
+        deposit_z_spin.setDecimals(2)
         self.input_widgets['deposit_offset_z'] = deposit_z_spin
-        offset_layout.addRow("Deposit Offset Z:", deposit_z_spin)
-        
-        offset_group.setLayout(offset_layout)
-        container_layout.addWidget(offset_group)
-        
+        deposit_layout.addRow("Deposit Offset Z:", deposit_z_spin)
+        # Destination slot
+        destination_slot_spin = QSpinBox()
+        destination_slot_spin.setRange(1, 12)
+        destination_slot_spin.setValue(self.settings.get('destination_slot', 5))
+        self.input_widgets['destination_slot'] = destination_slot_spin
+        deposit_layout.addRow("Destination Slot:", destination_slot_spin)
+        deposit_group.setLayout(deposit_layout)
+        container_layout.addWidget(deposit_group)
         # Size thresholds
         size_group = QGroupBox("Size Filters")
         size_layout = QFormLayout()
-        
         # Cuboid size range
         size_min_spin = QSpinBox()
         size_min_spin.setRange(50, 1000)
-        size_min_spin.setValue(self.settings['cuboid_size_theshold'][0])
+        size_min_spin.setValue(self.settings.get('cuboid_size_theshold', (250, 500))[0])
         size_min_spin.setSuffix(" μm")
         self.input_widgets['cuboid_size_min'] = size_min_spin
         size_layout.addRow("Size Min:", size_min_spin)
-        
         size_max_spin = QSpinBox()
         size_max_spin.setRange(100, 2000)
-        size_max_spin.setValue(self.settings['cuboid_size_theshold'][1])
+        size_max_spin.setValue(self.settings.get('cuboid_size_theshold', (250, 500))[1])
+        size_max_spin.setSuffix(" μm")
+        self.input_widgets['cuboid_size_max'] = size_max_spin
+        size_layout.addRow("Size Max:", size_max_spin)
+        size_group.setLayout(size_layout)
+        container_layout.addWidget(size_group)
+        # Circle detection settings
+        circle_group = QGroupBox("Circle Detection")
+        circle_layout = QFormLayout()
+        # Circle center X
+        center_x_spin = QSpinBox()
+        center_x_spin.setRange(0, 2000)
+        center_x_spin.setValue(self.settings.get('circle_center', (1296, 972))[0])
+        center_x_spin.setSuffix(" px")
+        self.input_widgets['circle_center_x'] = center_x_spin
+        circle_layout.addRow("Circle Center X:", center_x_spin)
+        # Circle center Y
+        center_y_spin = QSpinBox()
+        center_y_spin.setRange(0, 2000)
+        center_y_spin.setValue(self.settings.get('circle_center', (1296, 972))[1])
+        center_y_spin.setSuffix(" px")
+        self.input_widgets['circle_center_y'] = center_y_spin
+        circle_layout.addRow("Circle Center Y:", center_y_spin)
+        # Circle radius
+        radius_spin = QSpinBox()
+        radius_spin.setRange(100, 1500)
+        radius_spin.setValue(self.settings.get('circle_radius', 900))
+        radius_spin.setSuffix(" px")
+        self.input_widgets['circle_radius'] = radius_spin
+        circle_layout.addRow("Circle Radius:", radius_spin)
+        circle_group.setLayout(circle_layout)
+        container_layout.addWidget(circle_group)
+        # Contour filter settings
+        contour_group = QGroupBox("Contour Filters")
+        contour_layout = QFormLayout()
+        # Contour filter min
+        contour_min_spin = QSpinBox()
+        contour_min_spin.setRange(1, 10000)
+        contour_min_spin.setValue(self.settings.get('contour_filter_window', (30, 1000))[0])
+        contour_min_spin.setSuffix(" px²")
+        self.input_widgets['contour_filter_min'] = contour_min_spin
+        contour_layout.addRow("Contour Area Min:", contour_min_spin)
+        # Contour filter max
+        contour_max_spin = QSpinBox()
+        contour_max_spin.setRange(1, 10000)
+        contour_max_spin.setValue(self.settings.get('contour_filter_window', (30, 1000))[1])
+        contour_max_spin.setSuffix(" px²")
+        self.input_widgets['contour_filter_max'] = contour_max_spin
+        contour_layout.addRow("Contour Area Max:", contour_max_spin)
+        contour_group.setLayout(contour_layout)
+        container_layout.addWidget(contour_group)
+        # Shape filter settings
+        shape_group = QGroupBox("Shape Filters")
+        shape_layout = QFormLayout()
+        # Aspect ratio min
+        aspect_min_spin = QDoubleSpinBox()
+        aspect_min_spin.setRange(0.1, 2.0)
+        aspect_min_spin.setValue(self.settings.get('aspect_ratio_window', (0.75, 1.25))[0])
+        aspect_min_spin.setDecimals(2)
+        self.input_widgets['aspect_ratio_min'] = aspect_min_spin
+        shape_layout.addRow("Aspect Ratio Min:", aspect_min_spin)
+        # Aspect ratio max
+        aspect_max_spin = QDoubleSpinBox()
+        aspect_max_spin.setRange(0.1, 2.0)
+        aspect_max_spin.setValue(self.settings.get('aspect_ratio_window', (0.75, 1.25))[1])
+        aspect_max_spin.setDecimals(2)
+        self.input_widgets['aspect_ratio_max'] = aspect_max_spin
+        shape_layout.addRow("Aspect Ratio Max:", aspect_max_spin)
+        # Circularity min
+        circ_min_spin = QDoubleSpinBox()
+        circ_min_spin.setRange(0.1, 1.0)
+        circ_min_spin.setValue(self.settings.get('circularity_window', (0.6, 0.9))[0])
+        circ_min_spin.setDecimals(2)
+        self.input_widgets['circularity_min'] = circ_min_spin
+        shape_layout.addRow("Circularity Min:", circ_min_spin)
+        # Circularity max
+        circ_max_spin = QDoubleSpinBox()
+        circ_max_spin.setRange(0.1, 1.0)
+        circ_max_spin.setValue(self.settings.get('circularity_window', (0.6, 0.9))[1])
+        circ_max_spin.setDecimals(2)
+        self.input_widgets['circularity_max'] = circ_max_spin
+        shape_layout.addRow("Circularity Max:", circ_max_spin)
+        shape_group.setLayout(shape_layout)
+        container_layout.addWidget(shape_group)
+        # ...existing code...
         size_max_spin.setSuffix(" μm")
         self.input_widgets['cuboid_size_max'] = size_max_spin
         size_layout.addRow("Size Max:", size_max_spin)
@@ -555,7 +577,6 @@ class PickingSettingsWidget(QGroupBox):
     
     def apply_settings(self):
         """Apply current settings."""
-        # Update settings from widgets
         self.settings['vol'] = self.input_widgets['vol'].value()
         self.settings['dish_bottom'] = self.input_widgets['dish_bottom'].value()
         self.settings['pickup_offset'] = self.input_widgets['pickup_offset'].value()
@@ -568,61 +589,51 @@ class PickingSettingsWidget(QGroupBox):
         self.settings['well_offset_y'] = self.input_widgets['well_offset_y'].value()
         self.settings['deposit_offset_z'] = self.input_widgets['deposit_offset_z'].value()
         self.settings['destination_slot'] = self.input_widgets['destination_slot'].value()
-        
-        # Update tuple values
         self.settings['cuboid_size_theshold'] = (
             self.input_widgets['cuboid_size_min'].value(),
             self.input_widgets['cuboid_size_max'].value()
         )
-        
         self.settings['circle_center'] = (
             self.input_widgets['circle_center_x'].value(),
             self.input_widgets['circle_center_y'].value()
         )
         self.settings['circle_radius'] = self.input_widgets['circle_radius'].value()
-        
         self.settings['contour_filter_window'] = (
             self.input_widgets['contour_filter_min'].value(),
             self.input_widgets['contour_filter_max'].value()
         )
-        
         self.settings['aspect_ratio_window'] = (
             self.input_widgets['aspect_ratio_min'].value(),
             self.input_widgets['aspect_ratio_max'].value()
         )
-        
         self.settings['circularity_window'] = (
             self.input_widgets['circularity_min'].value(),
             self.input_widgets['circularity_max'].value()
         )
-        
         self.settings_changed.emit(self.settings.copy())
-        
-        # Show confirmation
         QMessageBox.information(self, "Settings Applied", "Picking settings have been updated successfully.")
     
     def reset_settings(self):
-        """Reset settings to defaults."""
-        # Reset to default values
+        """Reset settings to PickingConfig defaults."""
         self.input_widgets['vol'].setValue(10.0)
-        self.input_widgets['dish_bottom'].setValue(65.6)
+        self.input_widgets['dish_bottom'].setValue(66.1)
         self.input_widgets['pickup_offset'].setValue(0.5)
         self.input_widgets['flow_rate'].setValue(50.0)
         self.input_widgets['minimum_distance'].setValue(1.7)
         self.input_widgets['failure_threshold'].setValue(0.5)
-        self.input_widgets['wait_time_after_deposit'].setValue(0.3)
+        self.input_widgets['wait_time_after_deposit'].setValue(0.5)
         self.input_widgets['one_by_one'].setChecked(False)
-        self.input_widgets['well_offset_x'].setValue(0.0)
-        self.input_widgets['well_offset_y'].setValue(0.0)
-        self.input_widgets['deposit_offset_z'].setValue(0.2)
+        self.input_widgets['well_offset_x'].setValue(-0.3)
+        self.input_widgets['well_offset_y'].setValue(-0.9)
+        self.input_widgets['deposit_offset_z'].setValue(0.5)
         self.input_widgets['destination_slot'].setValue(5)
-        self.input_widgets['cuboid_size_min'].setValue(350)
-        self.input_widgets['cuboid_size_max'].setValue(550)
+        self.input_widgets['cuboid_size_min'].setValue(250)
+        self.input_widgets['cuboid_size_max'].setValue(500)
         self.input_widgets['circle_center_x'].setValue(1296)
         self.input_widgets['circle_center_y'].setValue(972)
         self.input_widgets['circle_radius'].setValue(900)
-        self.input_widgets['contour_filter_min'].setValue(50)
-        self.input_widgets['contour_filter_max'].setValue(3000)
+        self.input_widgets['contour_filter_min'].setValue(30)
+        self.input_widgets['contour_filter_max'].setValue(1000)
         self.input_widgets['aspect_ratio_min'].setValue(0.75)
         self.input_widgets['aspect_ratio_max'].setValue(1.25)
         self.input_widgets['circularity_min'].setValue(0.6)

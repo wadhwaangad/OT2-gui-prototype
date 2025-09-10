@@ -188,22 +188,6 @@ class Core():
             if np.sqrt(np.sum((best_center - curr_center)**2)) > 30:
                 self.best_circ = pt
 
-    # def size_conversion(self, cuboid_size_px: float) -> float:
-    #     """Size conversion from pixels to microns and then to 
-    #     cuboid diameter. In this calculation, cuboids are assumed to 
-    #     look circular. If we regard the cuboids as squares (top down view),
-    #     just a square root of cuboid_size_micron2 should be sufficient.
-
-    #     Args:
-    #         cuboid_size_px (float): cuboid size in pixels as seen by the camera.
-
-    #     Returns:
-    #         float: cuboid diameter in microns.
-    #     """    
-    #     cuboid_size_micron2 = cuboid_size_px * self.size_conversion_ratio * 1000000
-    #     cuboid_diameter = 2 * np.sqrt(cuboid_size_micron2 / np.pi)
-    #     return cuboid_diameter
-
     def contour_aspect_ratio(self, contour: np.ndarray) -> float:
         """
         Function calculates the aspect ratio of a contour.
@@ -214,7 +198,8 @@ class Core():
         Returns:
             float: The aspect ratio of the contour.
         """
-        x, y, w, h = cv2.boundingRect(contour)
+        w,h = cv2.minAreaRect(contour)[1]
+        # x, y, w, h = cv2.boundingRect(contour)
         aspect_ratio = float(w) / h
         return aspect_ratio
     
@@ -292,24 +277,3 @@ class Core():
             else:
                 centers.append((None,None))
         return centers
-    
-
-def mask_frame(frame: np.ndarray, pt: tuple, offset: int) -> np.ndarray:
-    """Function creates a circular mask and applies it to an image. In our case this is
-    used to select the area in the petri dish only and find contours there.
-
-    Args:
-        frame (np.ndarray): frame that needs to be masked.
-        pt (tuple): circle parameters, center coordinates a,b and radius r.
-        offset (int): an offset for mask application. Useful if circle is too large.
-
-    Returns:
-        np.ndarray: returns a masked image.
-    """
-    a, b, r = pt
-    # Create mask to isolate the information in the petri dish.
-    mask = np.zeros_like(frame)
-    mask = cv2.circle(mask, (a, b), r-offset, (255, 255, 255), -1)
-    # Apply the mask to the image.
-    result = cv2.bitwise_and(frame.astype('uint8'), mask.astype('uint8'))
-    return result

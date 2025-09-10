@@ -136,30 +136,54 @@ def test_func(x: int):
 
 @dataclass
 class PickingConfig:
-    vol: float
-    dish_bottom: float = 10.3 #10.60 for 300ul, 9.5 for 200ul
+    vol: float = 10.0
+    dish_bottom: float = 66.1 #10.60 for 300ul, 9.5 for 200ul
     pickup_offset: float = 0.5
     pickup_height: float = dish_bottom + pickup_offset
     flow_rate: float = 50.0
-    cuboid_size_theshold: tuple[int] = (250, 500)
+    cuboid_size_theshold: tuple[int, int] = (250, 500)
     failure_threshold: float = 0.5
     minimum_distance: float = 1.7
     wait_time_after_deposit: float = 0.5
+    one_by_one: bool = False
 
     # ----------------------Deposit configs-----------------------
     well_offset_x: float = -0.3 #384 well plate
     well_offset_y: float = -0.9 #384 well plate
+    deposit_offset_z: float = 0.5
+    destination_slot: int = 5
 
     # ----------------------Video configs-----------------------
-    circle_center: tuple[int] = (1024, 768)
+    circle_center: tuple[int, int] = (1296, 972)
     circle_radius: int = 900
-    contour_filter_window: tuple[int] = (30, 1000)  # min and max area for contour filtering
-    aspect_ratio_window: tuple[float] = (0.75, 1.25)  # min and max aspect ratio for contour filtering
-    min_circularity: float = 0.6  # min circularity for contour filtering
+    contour_filter_window: tuple[int, int] = (30, 1000)  # min and max area for contour filtering
+    aspect_ratio_window: tuple[float, float] = (0.75, 1.25)  # min and max aspect ratio for contour filtering
+    circularity_window: tuple[float, float] = (0.6, 0.9)  # circularity range for contour filtering
 
     @classmethod
-    def from_dict(cls, cfg: dict):
-        return cls(**{k: v for k, v in cfg.items() if k in cls.__annotations__})
+    def from_dict(cls, data: dict) -> "PickingConfig":
+        type_hints = get_type_hints(cls)
+        init_args = {}
+
+        for f in fields(cls):
+            name = f.name
+            if name in data:
+                value = data[name]
+            elif f.default is not MISSING:
+                value = f.default
+            else:
+                raise ValueError(f"Missing required field: {name}")
+
+            expected_type = type_hints[name]
+            if not is_instance_of_type(value, expected_type):
+                raise TypeError(f"Field '{name}' is expected to be {expected_type}, got {type(value)}")
+
+            init_args[name] = value
+
+        # Recalculate pickup_height after loading
+        obj = cls(**init_args)
+        obj.pickup_height = obj.dish_bottom + obj.pickup_offset
+        return obj
 
     def to_dict(self):
         return asdict(self)
@@ -360,6 +384,7 @@ class PickingProcedure():
                     
             except queue.Empty:
                 pass  # No new coordinates, continue looping
+
 class MarkdownLogger:
     def __init__(self, log_dir=paths.LOGS_DIR, experiment_name=None, settings: dict = None, well_plate: pd.DataFrame = None):
         os.makedirs(log_dir, exist_ok=True)
