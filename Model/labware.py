@@ -452,11 +452,11 @@ class LabwareModel:
 
     def _capture_verification_frame(self) -> np.ndarray:
         """Capture verification frame from under camera."""
-        time.sleep(0.5)
+        time.sleep(1)
         verification_frame = self.frame_capturer.capture_frame(UnderviewCameraName)
         if verification_frame is None:
             raise AssertionError("Failed to capture verification frame from under_cam.")
-        time.sleep(0.5)
+        time.sleep(1)
         return verification_frame
 
     def calibrate_tip(self) -> bool:
@@ -468,10 +468,10 @@ class LabwareModel:
         """
         try:
             # Configuration constants
-            CALIB_MODULE_COORDINATES = (255, 145.25, 100)
+            CALIB_MODULE_COORDINATES = (282.19999999999993, 161.27, 115.00000000000001)
             CALIB_MODULE_HEIGHT = 69
-            DETECTION_OFFSET_X = 2
-            DETECTION_OFFSET_Y = 2
+            DETECTION_OFFSET_X = -4
+            DETECTION_OFFSET_Y = 0
             MAX_OFFSET_THRESHOLD = 40
             
             # Step 1: Setup

@@ -27,12 +27,6 @@ import Model.globals as globals
 import Model.camera as camera
 import Model.utils as utils
 from Model.frame_capture import get_frame_capturer
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                           QPushButton, QGroupBox, QDialog, QDialogButtonBox)
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont
-from View.zoomable_video_widget import VideoDisplayWidget
-from View.cuboidpicking_view import TissuePickerDisplayWindow
 
 KEYBOARD_AVAILABLE = True
 
@@ -50,55 +44,34 @@ class RobotState(Enum):
     PAUSED = 'paused'
     CANCELED = 'canceled'
     COMPLETED = 'completed'
-    
+
+
 class TissuePickerFSM():
     def __init__(self, config: pp.PickingConfig, routine: pp.Routine, logger: pp.MarkdownLogger):
-        
-        try:
-            self.state = RobotState.IDLE
-            
-            # Don't create display window here - it will be set from main thread
-            self.display_window = None
-            
-            self.logger = logger
-            self.running = True
-            self.paused = False
-            self.keyboard_lock = threading.Lock()
-            self.keyboard_hooks = []
-            
-            # Get frame capturer
-            self.frame_capturer = get_frame_capturer()
+        self.state = RobotState.IDLE
+        self.logger = logger
+        self.running = True
+        self.paused = False
+        self.keyboard_lock = threading.Lock()
+        self.keyboard_hooks = []
+        self.frame_capturer = get_frame_capturer()
+        self.config = config
+        self.routine = routine
+        self.cr = core.Core()
 
-            self.config = config
-            self.routine = routine
-            
-            
-            self.cr = core.Core()
+        self.calibration_data = utils.load_calibration_config(globals.calibration_profile)
+        self.tf_mtx = np.array(self.calibration_data['tf_mtx'])
+        self.calib_origin = np.array(self.calibration_data['calib_origin'])[:2]
+        self.offset = np.array(self.calibration_data['offset'])
+        self.size_conversion_ratio = self.calibration_data['size_conversion_ratio']
+        self.one_d_ratio = self.calibration_data['one_d_ratio']
 
-            # Use global calibration profile
-            self.calibration_data = utils.load_calibration_config(globals.calibration_profile)
-            
-            self.tf_mtx = np.array(self.calibration_data['tf_mtx'])
-            self.calib_origin = np.array(self.calibration_data['calib_origin'])[:2]
-            self.offset = np.array(self.calibration_data['offset'])
-            self.size_conversion_ratio = self.calibration_data['size_conversion_ratio']
-            self.one_d_ratio = self.calibration_data['one_d_ratio']
-
-            # Initialize as empty DataFrames, not lists
-            import pandas as pd
-            self.isolated = pd.DataFrame()
-            self.pickable_cuboids = pd.DataFrame()
-            self.world_coordinates = []
-            self.cuboid_choice = None
-            self.current_frame = None
-            
-            self.current_well = self.routine.get_next_well()
-            
-        except Exception as e:
-            print(f"Error during TissuePickerFSM initialization: {e}")
-            import traceback
-            traceback.print_exc()
-            raise e
+        self.isolated = []
+        self.pickable_cuboids = []
+        self.world_coordinates = []
+        self.cuboid_choice = None
+        self.current_frame = None
+        self.current_well = self.routine.get_next_well()
 
     def calculate_robot_coordinates(self, cX, cY, robot_x, robot_y):
         X_init, Y_init, _ = self.tf_mtx @ (cX, cY, 1)
@@ -106,7 +79,7 @@ class TissuePickerFSM():
         X = X_init + diff[0] + self.offset[0]
         Y = Y_init + diff[1] + self.offset[1]
         return X, Y
-    
+
     def cv_pipeline(self, frame):
         mask = np.zeros_like(frame, dtype=np.uint8)
         cv2.circle(mask, self.config.circle_center, self.config.circle_radius + int(self.config.minimum_distance / self.one_d_ratio), (255, 255, 255), -1)
@@ -201,7 +174,7 @@ class TissuePickerFSM():
                 # cv2.rectangle(frame, (new_x, new_y), (new_x + new_w, new_y + new_h), (0, 0, 0), 2)
 
         return frame
-
+    
     def _setup_keyboard_hooks(self):
         """Setup global keyboard hooks using the keyboard module"""
         if not KEYBOARD_AVAILABLE:
@@ -255,128 +228,85 @@ class TissuePickerFSM():
         
         try:
             while self.running:
-                try:  # Add inner try-catch for each iteration
-                    with self.keyboard_lock:
-                        if self.paused:
-                            time.sleep(0.1)
-                            continue
+                with self.keyboard_lock:
+                    if self.paused:
+                        time.sleep(0.1)
+                        continue
                 
-                    # Execute current state
-                    if hasattr(self, f"state_{self.state.value}"):
-                        getattr(self, f"state_{self.state.value}")()
-                    else:
-                        print(f"Error: Unknown state {self.state.value}")
-                        self.running = False
+                # Execute current state
+                if hasattr(self, f"state_{self.state.value}"):
+                    getattr(self, f"state_{self.state.value}")()
+                else:
+                    print(f"Error: Unknown state {self.state.value}")
+                    self.running = False
                 
-                    # Small delay to prevent overwhelming the output
-                    time.sleep(0.1)
-                
-                except Exception as e:
-                    print(f"Error in state {self.state.value}: {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Decide whether to continue or stop based on error type
-                    if isinstance(e, (KeyError, AttributeError)):
-                        print("Critical error, stopping FSM")
-                        self.running = False
-                    else:
-                        print("Non-critical error, continuing...")
-                        time.sleep(1)  # Wait a bit before retrying
-    
+                # Small delay to prevent overwhelming the output
+                time.sleep(0.1)
+        
         except KeyboardInterrupt:
             print("\n[CONTROL] Keyboard interrupt received. Shutting down...")
             self.running = False
-    
+        
         finally:
             # Cleanup keyboard hooks
             self._cleanup_keyboard_hooks()
+            cv2.destroyAllWindows()
             print("\n=== Tissue Picker Robot FSM Stopped ===")
 
     def state_idle(self):
         print("Robot is idle. Press 'p' to continue...")
         self.paused = True  # Ensure the robot is paused in idle state
-        
-        try:
-            # Move to picking position
-            globals.robot_api.retract_axis('leftZ')
-            globals.robot_api.move_to_coordinates((self.calib_origin[0],self.calib_origin[1],115), min_z_height=self.config.dish_bottom, verbose=False)
-            # Turn off lights
-            current_status = globals.robot_api.get("lights", globals.robot_api.HEADERS)
-            current_status = json.loads(current_status.text)
-            is_on = current_status['on']
-            if is_on:
-                globals.robot_api.toggle_lights()
-        except Exception as e:
-            print(f"Error setting up robot in idle state: {e}")
-
-        # Only send status if display window exists and is safe to use
-        try:
-            if self.display_window and hasattr(self.display_window, 'send_status'):
-                self.display_window.send_status("Robot IDLE - Press 'p' to continue", (0, 0, 255))
-        except Exception as e:
-            print(f"Error sending status to display window: {e}")
+        # Move to picking position
+        globals.robot_api.retract_axis('leftZ')
+        globals.robot_api.move_to_coordinates((self.calib_origin[0],self.calib_origin[1],115), min_z_height=self.config.dish_bottom, verbose=False)
+        # Turn off lights
+        current_status = globals.robot_api.get("lights", globals.robot_api.HEADERS)
+        current_status = json.loads(current_status.text)
+        is_on = current_status['on']
+        if is_on:
+            globals.robot_api.toggle_lights()
 
         while self.paused and self.running:
             try:
-                # Use frame capturer instead of direct camera read
                 frame = self.frame_capturer.capture_frame("overview_cam_2")
-                if frame is None:
-                    time.sleep(0.1)
-                    continue
-                    
                 frame = globals.frame_ops.undistort_frame(frame)
-                if frame is None:
-                    time.sleep(0.1)
-                    continue
-                    
                 plot_frame = frame.copy()
                 self.cv_pipeline(frame)
                 self.draw_annotations(plot_frame)
-                
-                # Update global frame for display elsewhere
                 globals.cuboid_picking_frame = plot_frame.copy()
-                
             except Exception as e:
-                print(f"Error in idle state frame processing: {e}")
-                # Don't crash, just wait and try again
-                time.sleep(0.5)
-                continue
+                print(f"Error in idle state: {e}")
+                self.running = False
+                break
 
         self.state = RobotState.CAPTURE_FRAME
         self.start_time = time.time()
 
     def state_capture_frame(self):
         globals.robot_api.move_to_coordinates((self.calib_origin[0],self.calib_origin[1],115), min_z_height=self.config.dish_bottom, verbose=False)
-        time.sleep(0.75)
-        
-        # Use frame capturer instead of direct camera read
-        frame = self.frame_capturer.capture_frame("overview_cam_2")
-        frame = globals.frame_ops.undistort_frame(frame)
-        if frame is not None:
-            self.current_frame = globals.frame_ops.undistort_frame(frame)
-            self.state = RobotState.ANALYZE_FRAME
-        else:
-            print("Failed to capture frame, retrying...")
-            time.sleep(0.1)
-            
-    def state_auto_shake(self):
-        openapi.retract_axis('leftZ')
-        openapi.move_to_coordinates((235, 223, 64.6), verbose=False)
-        for _ in range(3):
-            openapi.move_relative('x', -10)
-            openapi.move_relative('x', 10)
-            time.sleep(0.5)
-        openapi.move_relative('x', 2)
         time.sleep(0.5)
-        openapi.move_relative('x', -2)
-        openapi.retract_axis('leftZ')
+
+        frame = self.frame_capturer.capture_frame("overview_cam_2")
+        self.current_frame = globals.frame_ops.undistort_frame(frame)
+        self.state = RobotState.ANALYZE_FRAME
+
+    def state_auto_shake(self):
+        globals.robot_api.retract_axis('leftZ')
+        globals.robot_api.move_to_coordinates((235, 223, 65), verbose=False)
+        for _ in range(3):
+            globals.robot_api.move_relative('x', -10)
+            globals.robot_api.move_relative('x', 10)
+            time.sleep(0.5)
+        globals.robot_api.move_relative('x', 2)
+        time.sleep(0.5)
+        globals.robot_api.move_relative('x', -2)
+        globals.robot_api.retract_axis('leftZ')
         time.sleep(2)
         self.state = RobotState.CAPTURE_FRAME
 
     def state_analyze_frame(self):
         self.cv_pipeline(self.current_frame)
-        # Fix: Use .empty instead of len() == 0
-        if self.isolated.empty:
+        if len(self.isolated) == 0:
             print("No isolated cuboids found. Pausing...")
             self.logger.log("No cuboids found in the selected region. Pausing...")
             self.state = RobotState.AUTO_SHAKE
@@ -384,27 +314,18 @@ class TissuePickerFSM():
 
         next_well = self.routine.get_next_well()
         cuboids_to_fill = self.routine.well_plan[next_well] - self.routine.filled_wells[next_well]
-        
         if not self.config.one_by_one:
-            # Fix: Use len() properly with DataFrame
             if len(self.isolated) > cuboids_to_fill:
                 self.cuboid_choice = self.isolated.sample(n=cuboids_to_fill)
             else:
-                self.cuboid_choice = self.isolated.copy()
+                self.cuboid_choice = self.isolated
         else:
             self.cuboid_choice = self.isolated.sample(n=1)
 
-        # Ensure we don't try to log empty DataFrames
-        if not self.cuboid_choice.empty:
-            log_columns = [col for col in self.cuboid_choice.columns if col != 'contour']
-            self.logger.log_table(self.cuboid_choice[log_columns], title=f"Filling well {next_well}")
-        
+        self.logger.log_table(self.cuboid_choice.loc[:, self.cuboid_choice.columns != 'contour'], title=f"Filling well {next_well}")
         plot_frame = self.current_frame.copy()
         self.draw_annotations(plot_frame)
-        
-        # Update global frame for display elsewhere
         globals.cuboid_picking_frame = plot_frame.copy()
-        
         self.state = RobotState.APPROACH_TARGET
 
     def state_approach_target(self):
@@ -427,37 +348,24 @@ class TissuePickerFSM():
     def state_verify_pickup(self):
         globals.robot_api.move_to_coordinates((self.calib_origin[0],self.calib_origin[1],115), min_z_height=self.config.dish_bottom, verbose=False, force_direct=True)
         time.sleep(0.75)
-        
-        # Use frame capturer instead of direct camera read
         frame = self.frame_capturer.capture_frame("overview_cam_2")
-        frame = globals.frame_ops.undistort_frame(frame)
-        if frame is not None:
-            self.current_frame = globals.frame_ops.undistort_frame(frame)
-            self.cv_pipeline(self.current_frame)
-        else:
-            print("Failed to capture verification frame")
-            self.state = RobotState.IDLE
-            return
+        self.current_frame = globals.frame_ops.undistort_frame(frame)
+        self.cv_pipeline(self.current_frame)
 
         plot_frame = self.current_frame.copy()
         self.draw_annotations(plot_frame)
         miss_occurred = False
-        if self.cuboid_choice is not None and not self.cuboid_choice.empty:
+        if self.cuboid_choice is not None:
             for prev_x, prev_y in self.cuboid_choice[['cX', 'cY']].values:
                 cv2.circle(plot_frame, (int(prev_x), int(prev_y)), int(round(self.config.failure_threshold / self.one_d_ratio)), (255, 0, 0), 2)
-                
-                # Fix: Check if cr.cuboid_df exists and is not empty before filtering
-                if not self.cr.cuboid_df.empty and 'bubble' in self.cr.cuboid_df.columns:
-                    check_miss_df = self.cr.cuboid_df.loc[self.cr.cuboid_df['bubble'] == False].copy()
-                    
-                    if not check_miss_df.empty:
-                        distances = check_miss_df.apply(lambda row: np.sqrt((row['cX'] - prev_x)**2 + (row['cY'] - prev_y)**2), axis=1).to_numpy()
-                        distances *= self.one_d_ratio
-                        if any(distances <= self.config.failure_threshold):
-                            print(f"Miss detected at well {self.routine.current_well}.")
-                            self.routine.update_well(success=False)
-                            miss_occurred = True
-                            self.logger.log(f"Miss detected at well {self.routine.current_well}.")
+                check_miss_df = self.pickable_cuboids.copy()
+                distances = check_miss_df.apply(lambda row: np.sqrt((row['cX'] - prev_x)**2 + (row['cY'] - prev_y)**2), axis=1).to_numpy()
+                distances *= self.one_d_ratio
+                if any(distances <= self.config.failure_threshold):
+                    print(f"Miss detected at well {self.routine.current_well}.")
+                    self.routine.update_well(success=False)
+                    miss_occurred = True
+                    self.logger.log(f"Miss detected at well {self.routine.current_well}.")
 
             if not miss_occurred:
                 for _, _ in self.cuboid_choice[['cX', 'cY']].values:
@@ -468,15 +376,14 @@ class TissuePickerFSM():
         else:
             self.state = RobotState.TRANSFER_TO_WELL
 
-        # Update global frame for display elsewhere
         globals.cuboid_picking_frame = plot_frame.copy()
-        
 
     def state_deposit_liquid_back(self):
         x,y = self.world_coordinates[0]  # Use the first coordinate for depositing back
         globals.robot_api.move_to_coordinates((x, y, self.config.pickup_height+20), min_z_height=self.config.dish_bottom, verbose=False, force_direct=True)
         globals.robot_api.move_to_coordinates((x, y, self.config.pickup_height+0.5), min_z_height=self.config.dish_bottom, verbose=False, force_direct=True)
         globals.robot_api.dispense_in_place(flow_rate = self.config.flow_rate, volume = self.config.vol * len(self.world_coordinates))
+        time.sleep(0.5)
         globals.robot_api.move_relative('z', 20)
 
         self.state = RobotState.CAPTURE_FRAME

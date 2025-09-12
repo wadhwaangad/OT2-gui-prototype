@@ -18,10 +18,12 @@ import threading
 import queue
 import string
 import pandas as pd
-from dataclasses import dataclass, asdict, fields
+from dataclasses import dataclass, asdict, fields,MISSING
 from typeguard import typechecked
 import paths
 import datetime
+from typing import get_type_hints, List, Union, Any
+from typing import get_origin, get_args
 class Destination:
     WELL_PLATE_PRESETS = {
         6: (2, 3),   # 2 rows × 3 cols
@@ -128,6 +130,35 @@ def create_well_plan(plate_type):
 
     well_df = pd.DataFrame(np.zeros((rows, cols), dtype=int), index=row_labels, columns=col_labels)
     return well_df
+def is_instance_of_type(value: Any, expected_type: Any) -> bool:
+    origin = get_origin(expected_type)
+    args = get_args(expected_type)
+
+    if origin is None:
+        return isinstance(value, expected_type)
+
+    if origin is Union:
+        return any(is_instance_of_type(value, arg) for arg in args)
+
+    if origin is tuple:
+        if len(args) == 2 and args[1] is ...:  # Tuple[int, ...]
+            return isinstance(value, tuple) and all(is_instance_of_type(v, args[0]) for v in value)
+        return (
+            isinstance(value, tuple)
+            and len(value) == len(args)
+            and all(is_instance_of_type(v, t) for v, t in zip(value, args))
+        )
+
+    if origin is list:
+        return isinstance(value, list) and all(is_instance_of_type(v, args[0]) for v in value)
+
+    if origin is dict:
+        return (
+            isinstance(value, dict)
+            and all(is_instance_of_type(k, args[0]) and is_instance_of_type(v, args[1]) for k, v in value.items())
+        )
+
+    return isinstance(value, expected_type)
 
 @typechecked
 def test_func(x: int):
