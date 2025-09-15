@@ -17,6 +17,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QPropertyAnimation, QEasingCurve, QRect
 from PyQt6.QtGui import QFont, QPalette, QColor, QPainter, QBrush, QPen, QLinearGradient
 import Model.globals as globals
 import Model.picking_procedure as picking_procedure
+from Model.progress_monitor import ProgressMonitorBridge
 import keyboard 
 from View.zoomable_video_widget import VideoDisplayWidget
 import Model.globals as globals
@@ -33,6 +34,13 @@ class WellWidget(QFrame):
         self.is_hovered = False
         self.animation = None
         self.cuboid_count = 0  # Number of cuboids assigned to this well
+        
+        # Real-time progress tracking
+        self.target_count = 0  # Target number of cuboids to pick
+        self.filled_count = 0  # Current number of cuboids actually picked
+        self.is_current_well = False  # Whether this well is currently being worked on
+        self.is_completed = False  # Whether this well has reached its target
+        
         self.setup_ui()
         
     def setup_ui(self):
@@ -67,41 +75,132 @@ class WellWidget(QFrame):
         """Get the number of cuboids assigned to this well."""
         return self.cuboid_count
     
+    def set_target_count(self, count: int):
+        """Set the target number of cuboids for this well (planning phase)."""
+        self.target_count = count
+        self.set_cuboid_count(count)  # Update display
+    
+    def set_filled_count(self, count: int):
+        """Set the actual number of cuboids picked for this well (real-time progress)."""
+        self.filled_count = count
+        self.is_completed = (self.filled_count >= self.target_count) if self.target_count > 0 else False
+        self.update_progress_display()
+        self.update_tooltip()
+        self.update_appearance()
+    
+    def set_current_well(self, is_current: bool):
+        """Set whether this well is currently being worked on."""
+        self.is_current_well = is_current
+        self.update_appearance()
+        
+    def update_progress_display(self):
+        """Update the display to show progress information."""
+        if self.target_count > 0:
+            if self.is_current_well:
+                # Show current progress for active well
+                self.label.setText(f"{self.filled_count}/{self.target_count}")
+            elif self.is_completed:
+                # Show completed status
+                self.label.setText(f"✓{self.filled_count}")
+            elif self.filled_count > 0:
+                # Show partial progress
+                self.label.setText(f"{self.filled_count}/{self.target_count}")
+            else:
+                # Show planned count
+                self.label.setText(str(self.target_count))
+        else:
+            # No assignment
+            self.label.setText(self.well_id)
+    
     def update_tooltip(self):
-        """Update the tooltip with current information."""
-        if self.cuboid_count > 0:
-            self.setToolTip(f"Well {self.well_id}: {self.cuboid_count} cuboids\nClick to toggle selection\nDrag to select area")
+        """Update the tooltip with current information including progress."""
+        if self.target_count > 0:
+            status_parts = [f"Well {self.well_id}"]
+            
+            if self.is_current_well:
+                status_parts.append(f"🔄 Currently picking: {self.filled_count}/{self.target_count}")
+            elif self.is_completed:
+                status_parts.append(f"✅ Completed: {self.filled_count}/{self.target_count}")
+            elif self.filled_count > 0:
+                status_parts.append(f"🔸 Progress: {self.filled_count}/{self.target_count}")
+            else:
+                status_parts.append(f"📋 Planned: {self.target_count} cuboids")
+            
+            status_parts.append("Click to toggle selection\nDrag to select area")
+            self.setToolTip("\n".join(status_parts))
         else:
             self.setToolTip(f"Well {self.well_id}: No cuboids assigned\nClick to toggle selection\nDrag to select area")
     
     def update_appearance(self):
-        """Update the visual appearance with professional styling."""
-        if self.cuboid_count > 0:
+        """Update the visual appearance with professional styling and progress states."""
+        # Determine colors based on progress state
+        if self.is_current_well:
+            # Currently being worked on - bright orange/yellow
             if self.is_selected:
-                bg_color = "#27ae60"  # Green for assigned wells
+                bg_color = "#f39c12"  # Orange selected
+                text_color = "white"
+                border_color = "#e67e22"
+                border_width = "3px"
+            else:
+                bg_color = "qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #f7dc6f, stop: 1 #f39c12)"
+                text_color = "white"
+                border_color = "#f39c12"
+                border_width = "2px"
+                
+        elif self.is_completed:
+            # Completed wells - green
+            if self.is_selected:
+                bg_color = "#27ae60"  # Green selected
                 text_color = "white"
                 border_color = "#229954"
                 border_width = "2px"
-            elif self.is_hovered:
-                bg_color = "qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #a9dfbf, stop: 1 #7fb069)"
+            else:
+                bg_color = "qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #a9dfbf, stop: 1 #58d68d)"
                 text_color = "#1e3d59"
                 border_color = "#27ae60"
+                border_width = "1px"
+                
+        elif self.filled_count > 0 and self.target_count > 0:
+            # Partially filled wells - blue-green
+            if self.is_selected:
+                bg_color = "#16a085"  # Teal selected
+                text_color = "white"
+                border_color = "#138d75"
                 border_width = "2px"
             else:
-                bg_color = "qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #d5f4e6, stop: 1 #a9dfbf)"
+                bg_color = "qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #abebc6, stop: 1 #48c9b0)"
                 text_color = "#1e3d59"
-                border_color = "#58d68d"
+                border_color = "#16a085"
                 border_width = "1px"
-        else:
+                
+        elif self.target_count > 0:
+            # Planned but not started - light blue
             if self.is_selected:
-                bg_color = "#3498db"  # Professional blue
+                bg_color = "#3498db"  # Blue selected
                 text_color = "white"
                 border_color = "#2980b9"
                 border_width = "2px"
             elif self.is_hovered:
+                bg_color = "qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #d6eaf8, stop: 1 #85c1e9)"
+                text_color = "#1e3d59"
+                border_color = "#3498db"
+                border_width = "2px"
+            else:
+                bg_color = "qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #ebf5fb, stop: 1 #d6eaf8)"
+                text_color = "#2c3e50"
+                border_color = "#85c1e9"
+                border_width = "1px"
+        else:
+            # Empty wells - light gray
+            if self.is_selected:
+                bg_color = "#95a5a6"  # Gray selected
+                text_color = "white"
+                border_color = "#7f8c8d"
+                border_width = "2px"
+            elif self.is_hovered:
                 bg_color = "qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #ecf0f1, stop: 1 #d5dbdb)"
                 text_color = "#2c3e50"
-                border_color = "#3498db"
+                border_color = "#95a5a6"
                 border_width = "2px"
             else:
                 bg_color = "qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #ffffff, stop: 1 #f8f9fa)"
@@ -258,26 +357,30 @@ class PickingSettingsWidget(QGroupBox):
     
     def __init__(self, parent=None):
         super().__init__("Picking Settings", parent)
+        dish_bottom = 66.1
+        pickup_offset = 0.5
         self.settings = {
             'vol': 10.0,
-            'dish_bottom': 65.6,
-            'pickup_offset': 0.5,
+            'dish_bottom': dish_bottom,
+            'pickup_offset': pickup_offset,
+            'pickup_height': dish_bottom + pickup_offset,
             'flow_rate': 50.0,
-            'cuboid_size_theshold': (350, 550),
+            'cuboid_size_theshold': (250, 500),
             'failure_threshold': 0.5,
             'minimum_distance': 1.7,
-            'wait_time_after_deposit': 0.3,
+            'wait_time_after_deposit': 0.5,
             'one_by_one': False,
-            'well_offset_x': 0.0,
-            'well_offset_y': 0.0,
-            'deposit_offset_z': 0.2,
+            'well_offset_x': -0.3,  
+            'well_offset_y': -0.9,  
+            'deposit_offset_z': 0.5,
             'destination_slot': 5,
             'circle_center': (1296, 972),
             'circle_radius': 900,
-            'contour_filter_window': (50, 3000),
-            'aspect_ratio_window': (0.75, 1.25),
+            'contour_filter_window': (30, 1000),  
+            'aspect_ratio_window': (0.75, 1.25),  
             'circularity_window': (0.6, 0.9)
         }
+        
         self.input_widgets = {}
         self.setup_ui()
     
@@ -864,6 +967,43 @@ class WellplateGridWidget(QFrame):
         }
         return well_plan
     
+    # Real-time progress tracking methods
+    def set_current_well_status(self, well_id: str):
+        """Set the specified well as currently being worked on."""
+        # Clear current status from all wells
+        for widget in self.well_widgets.values():
+            widget.set_current_well(False)
+        
+        # Set current well
+        if well_id in self.well_widgets:
+            self.well_widgets[well_id].set_current_well(True)
+            print(f"GridWidget: Set current well to {well_id}")
+    
+    def update_well_progress(self, well_id: str, filled_count: int):
+        """Update the filled count for a specific well."""
+        if well_id in self.well_widgets:
+            self.well_widgets[well_id].set_filled_count(filled_count)
+            print(f"GridWidget: Updated well {well_id} progress to {filled_count}")
+    
+    def update_all_progress(self, progress_dict: dict):
+        """Update progress for all wells from the progress dictionary."""
+        for well_id, filled_count in progress_dict.items():
+            self.update_well_progress(well_id, filled_count)
+    
+    def initialize_well_targets(self):
+        """Initialize well target counts from current assignments."""
+        for well_id, widget in self.well_widgets.items():
+            target_count = self.well_cuboid_counts.get(well_id, 0)
+            widget.set_target_count(target_count)
+        print(f"GridWidget: Initialized targets for {len(self.well_widgets)} wells")
+    
+    def clear_progress_state(self):
+        """Clear all progress tracking state (use when picking stops)."""
+        for widget in self.well_widgets.values():
+            widget.set_current_well(False)
+            widget.set_filled_count(0)
+        print("GridWidget: Cleared all progress state")
+    
     def mousePressEvent(self, event):
         """Handle mouse press for unified drag selection."""
         if event.button() == Qt.MouseButton.LeftButton:
@@ -1120,6 +1260,11 @@ class CuboidPickingView(QWidget):
         self.picking_settings = self.controller.get_default_picking_config()
         self.current_wellplate_name = ""
         self.tissue_picker_window = None  # Initialize tissue picker display window
+        
+        # Initialize progress monitoring
+        self.progress_monitor = ProgressMonitorBridge(self)
+        self.setup_progress_connections()
+        
         self.setup_ui()
         self.load_wellplates()
     
@@ -1249,6 +1394,72 @@ class CuboidPickingView(QWidget):
         main_layout.addWidget(splitter)
         self.setLayout(main_layout)
     
+    def setup_progress_connections(self):
+        """Setup connections for real-time progress monitoring."""
+        # Connect progress monitor signals to update methods
+        self.progress_monitor.well_started_signal.connect(self.on_well_started)
+        self.progress_monitor.well_completed_signal.connect(self.on_well_completed)
+        self.progress_monitor.state_changed_signal.connect(self.on_state_changed)
+        self.progress_monitor.picking_progress_signal.connect(self.on_picking_progress)
+        self.progress_monitor.fsm_finished_signal.connect(self.on_fsm_finished)
+    
+    def on_well_started(self, well_id: str):
+        """Handle well started signal from FSM."""
+        print(f"View: Well started - {well_id}")
+        if self.current_wellplate_name in self.wellplate_grids:
+            self.wellplate_grids[self.current_wellplate_name].set_current_well_status(well_id)
+        self.status_label.setText(f"Currently picking cuboids for well {well_id}")
+    
+    def on_well_completed(self, well_id: str, filled_count: int, success: bool):
+        """Handle well completed signal from FSM."""
+        status = "successfully" if success else "with issues"
+        print(f"View: Well completed - {well_id}, filled: {filled_count}, success: {success}")
+        if self.current_wellplate_name in self.wellplate_grids:
+            self.wellplate_grids[self.current_wellplate_name].update_well_progress(well_id, filled_count)
+        self.status_label.setText(f"Well {well_id} completed {status} - {filled_count} cuboids picked")
+    
+    def on_state_changed(self, state_name: str, current_well: str):
+        """Handle state changed signal from FSM."""
+        print(f"View: State changed - {state_name}, well: {current_well}")
+        status_messages = {
+            'idle': 'System ready',
+            'capture_frame': 'Capturing camera frame',
+            'analyze_frame': f'Analyzing frame for well {current_well}',
+            'approach_target': f'Approaching targets in well {current_well}',
+            'pickup_sample': f'Picking up cuboids from well {current_well}',
+            'verify_pickup': f'Verifying pickup for well {current_well}',
+            'deposit_back': 'Depositing liquid back',
+            'transfer_to_well': f'Transferring to well {current_well}',
+            'auto_shake': 'Auto-shaking sample',
+            'paused': 'System paused',
+            'completed': 'Picking procedure completed',
+            'canceled': 'Picking procedure canceled'
+        }
+        
+        message = status_messages.get(state_name.lower(), f"State: {state_name}")
+        self.status_label.setText(message)
+    
+    def on_picking_progress(self, progress_dict: dict):
+        """Handle picking progress update from FSM."""
+        print(f"View: Progress update - {progress_dict}")
+        if self.current_wellplate_name in self.wellplate_grids:
+            self.wellplate_grids[self.current_wellplate_name].update_all_progress(progress_dict)
+        
+        # Update summary
+        self.update_assignment_summary()
+    
+    def on_fsm_finished(self):
+        """Handle FSM finished signal."""
+        print("View: FSM finished")
+        if self.current_wellplate_name in self.wellplate_grids:
+            self.wellplate_grids[self.current_wellplate_name].clear_progress_state()
+        self.status_label.setText("Picking procedure finished")
+        
+        # Close tissue picker window if open
+        if self.tissue_picker_window:
+            self.tissue_picker_window.stop()
+            self.tissue_picker_window = None
+
     def on_settings_changed(self, settings):
         """Handle settings changes."""
         self.picking_settings = settings
@@ -1413,11 +1624,6 @@ class CuboidPickingView(QWidget):
             self.tissue_picker_window.start()
             self.tissue_picker_window.send_status("Initializing picking procedure...", (0, 255, 255))  # Cyan status
             
-            # Update button to show stop functionality
-            self.pick_cuboids_btn.setText("Stop Picking")
-            self.pick_cuboids_btn.clicked.disconnect()
-            self.pick_cuboids_btn.clicked.connect(self.stop_cuboid_picking)
-            
             # Extract plate type from well count
             well_count = current_grid.well_count
             
@@ -1430,55 +1636,33 @@ class CuboidPickingView(QWidget):
             # Start the picking procedure using the controller
             success = self.controller.start_cuboid_picking(
                 well_plan=well_df,
-                config_data=config_data,
-            )
+                config_data=config_data, 
+                plate_type=well_count)
             
             if success:
-                self.status_label.setText("Cuboid picking procedure started - check vision window")
-                # Connect to FSM status updates if available
-                if hasattr(self.controller, 'tissue_picker_fsm') and self.controller.tissue_picker_fsm:
-                    # Set the display window reference in the FSM for direct updates
-                    self.controller.tissue_picker_fsm.display_window = self.tissue_picker_window
+                # Initialize well target counts for progress tracking
+                current_grid.initialize_well_targets()
+                
+                # Connect progress monitor to FSM if available
+                if hasattr(self.controller.cuboid_picking_model, 'tissue_picker_fsm') and self.controller.cuboid_picking_model.tissue_picker_fsm:
+                    self.progress_monitor.connect_to_fsm(self.controller.cuboid_picking_model.tissue_picker_fsm)
+                    print("View: Connected progress monitor to FSM")
+                
+                self.status_label.setText("Cuboid picking procedure started - monitoring progress...")
+                
+                # Set the display window reference in the FSM for direct updates
+                if hasattr(self.controller.cuboid_picking_model, 'tissue_picker_fsm') and self.controller.cuboid_picking_model.tissue_picker_fsm:
+                    self.controller.cuboid_picking_model.tissue_picker_fsm.display_window = self.tissue_picker_window
             else:
                 QMessageBox.critical(self, "Error", "Failed to initialize cuboid picking procedure")
-                self.tissue_picker_window.stop()
-                self.reset_pick_button()
+                if self.tissue_picker_window:
+                    self.tissue_picker_window.stop()
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to start cuboid picking: {str(e)}")
             if self.tissue_picker_window:
                 self.tissue_picker_window.stop()
-            self.reset_pick_button()
 
-    def reset_pick_button(self):
-        """Reset the pick button to its original state."""
-        self.pick_cuboids_btn.setText("Pick Cuboids")
-        self.pick_cuboids_btn.clicked.disconnect()
-        self.pick_cuboids_btn.clicked.connect(self.start_cuboid_picking)
-
-    def stop_cuboid_picking(self):
-        """Stop the current cuboid picking procedure."""
-        try:
-            # Stop the display window first
-            if self.tissue_picker_window:
-                self.tissue_picker_window.stop()
-                self.tissue_picker_window = None
-            
-            # Stop the FSM procedure
-            if hasattr(self.controller, 'stop_cuboid_picking'):
-                success = self.controller.stop_cuboid_picking()
-                if success:
-                    self.status_label.setText("Cuboid picking procedure stopped")
-                else:
-                    self.status_label.setText("No active picking procedure to stop")
-            
-            # Reset button
-            self.reset_pick_button()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to stop cuboid picking: {str(e)}")
-            self.reset_pick_button()
-    
     def clear_grids(self):
         """Clear all existing wellplate grids with proper cleanup."""
         for grid_widget in self.wellplate_grids.values():
@@ -1504,6 +1688,7 @@ class TissuePickerDisplayWindow(QDialog):
 
         self.setWindowTitle(title)
         self.setMinimumSize(800, 600)
+        self.resize(1200, 900)  # Set a reasonable default size
         self.setModal(False)  # Make it non-modal so it doesn't block the main application
         
         self.setup_ui()
@@ -1521,27 +1706,9 @@ class TissuePickerDisplayWindow(QDialog):
         info_layout.addWidget(self.status_label)
         info_layout.addStretch()
 
-        # Add FSM state info
-        self.state_label = QLabel("FSM State: Idle")
-        self.state_label.setFont(QFont("Arial", 10))
-        self.state_label.setStyleSheet("color: #666; padding: 5px;")
-        info_layout.addWidget(self.state_label)
-
-        # Control group
+        # Control group with only reset view button
         controls_group = QGroupBox("Controls")
         controls_layout = QHBoxLayout()
-
-        # Control buttons
-        self.pause_btn = QPushButton("Pause/Resume (P)")
-        self.pause_btn.clicked.connect(self.toggle_pause)
-        self.pause_btn.setToolTip("Pause or resume the picking process")
-        controls_layout.addWidget(self.pause_btn)
-
-        self.stop_btn = QPushButton("Emergency Stop (ESC)")
-        self.stop_btn.clicked.connect(self.emergency_stop)
-        self.stop_btn.setToolTip("Emergency stop the picking process")
-        self.stop_btn.setStyleSheet("QPushButton { background-color: #ff4444; color: white; font-weight: bold; }")
-        controls_layout.addWidget(self.stop_btn)
 
         self.reset_view_btn = QPushButton("Reset View")
         self.reset_view_btn.clicked.connect(self.reset_view)
@@ -1551,9 +1718,10 @@ class TissuePickerDisplayWindow(QDialog):
         controls_layout.addStretch()
         controls_group.setLayout(controls_layout)
 
-        # Video display
+        # Video display - make it expandable
         self.video_display = VideoDisplayWidget()
         self.video_display.setMinimumSize(640, 480)
+        self.video_display.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Button box
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
@@ -1599,10 +1767,6 @@ class TissuePickerDisplayWindow(QDialog):
         self.status_label.setText(f"Status: {status_text}")
         self.status_label.setStyleSheet(f"color: {color_hex}; font-weight: bold; padding: 5px;")
     
-    def update_fsm_state(self, state_name: str):
-        """Update the FSM state display."""
-        self.state_label.setText(f"FSM State: {state_name}")
-    
     def update_display(self):
         """Update the video display."""
         if not self.is_active:
@@ -1623,37 +1787,6 @@ class TissuePickerDisplayWindow(QDialog):
                 self.current_frame = frame
             except Exception as e:
                 print(f"DEBUG: Error setting frame in video display: {e}")
-        
-        # Update FSM state if controller is available
-        if self.controller and hasattr(self.controller, 'get_procedure_status'):
-            try:
-                status = self.controller.get_procedure_status()
-                if status.get('active', False):
-                    state_name = status.get('state', 'Unknown')
-                    current_well = status.get('current_well', 'None')
-                    self.update_fsm_state(f"{state_name} (Well: {current_well})")
-                else:
-                    self.update_fsm_state("Inactive")
-            except Exception as e:
-                print(f"DEBUG: Error getting FSM status: {e}")
-    
-    def toggle_pause(self):
-        """Toggle pause/resume - emulate 'p' key press."""
-        try:
-            if KEYBOARD_AVAILABLE:
-                keyboard.send('p')
-                print("DEBUG: Sent pause command")
-        except Exception as e:
-            print(f"Could not send pause command: {e}")
-    
-    def emergency_stop(self):
-        """Emergency stop - emulate 'ESC' key press."""
-        try:
-            if KEYBOARD_AVAILABLE:
-                keyboard.send('esc')
-                print("DEBUG: Sent emergency stop command")
-        except Exception as e:
-            print(f"Could not send stop command: {e}")
     
     def reset_view(self):
         """Reset the video view."""

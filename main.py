@@ -4,7 +4,7 @@ Main GUI application for the microtissue manipulator.
 
 import sys
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QTabWidget, QWidget, 
-                           QVBoxLayout, QStatusBar, QMenuBar, QMenu)
+                           QVBoxLayout, QStatusBar, QMenuBar, QMenu, QSplitter)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction, QIcon
 
@@ -12,7 +12,7 @@ from Controller.main_controller import MainController
 from View.camera_view import CameraView
 from View.settings_view import SettingsView
 from View.labware_view import LabwareView
-from View.status_widget import StatusWidget
+from View.terminal_side_panel import TerminalSidePanel
 import traceback
 
 class MainWindow(QMainWindow):
@@ -21,6 +21,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.controller = MainController()
+        self.terminal_panel = None  # Initialize as None
         self.setup_ui()
         self.setup_menu()
         self.setup_status_bar()
@@ -28,8 +29,12 @@ class MainWindow(QMainWindow):
         # Connect controller to views
         self.controller.set_views(self, self.settings_view, self.labware_view, self.camera_view, self.wellplate_view)
         
-        # Pass status widget to controller for universal access
-        self.controller.set_status_widget(self.status_widget)
+        # Create terminal panel but don't show it initially
+        self.terminal_panel = TerminalSidePanel()
+        self.terminal_panel.panel_closed.connect(self.on_terminal_panel_closed)
+        
+        # Pass terminal panel to controller for universal access
+        self.controller.set_status_widget(self.terminal_panel)
         
         # Delay status timer start to allow full initialization
         QTimer.singleShot(2000, self.start_status_timer)  # Start after 2 seconds
@@ -49,23 +54,31 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Microtissue Manipulator Control")
         self.setMinimumSize(1200, 800)
         
-        # Create central widget with tab widget
+        # Create central widget with splitter layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
         layout = QVBoxLayout(central_widget)
+        layout.setContentsMargins(0, 0, 0, 0)
         
-        # Add universal status widget at the top
-        self.status_widget = StatusWidget()
-        layout.addWidget(self.status_widget)
+        # Create horizontal splitter for main content and side panel
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Create tab widget
+        # Create tab widget (main content)
         self.tab_widget = QTabWidget()
         
         # Create tabs
         self.create_tabs()
         
-        layout.addWidget(self.tab_widget)
+        # Add tab widget to splitter
+        self.main_splitter.addWidget(self.tab_widget)
+        
+        # Set splitter properties
+        self.main_splitter.setCollapsible(0, False)  # Main content can't be collapsed
+        # Note: Will set collapsible for panel when it's added
+        self.main_splitter.setSizes([1000])  # Start with only main content
+        
+        layout.addWidget(self.main_splitter)
     
     def create_tabs(self):
         """Create the main tabs."""
@@ -95,56 +108,22 @@ class MainWindow(QMainWindow):
         """Setup the menu bar."""
         menubar = self.menuBar()
         
-        # File menu
-        file_menu = menubar.addMenu("File")
+        # Options menu
+        options_menu = menubar.addMenu("Options")
         
-        # New action
-        new_action = QAction("New Configuration", self)
-        new_action.setShortcut("Ctrl+N")
-        new_action.triggered.connect(self.new_configuration)
-        file_menu.addAction(new_action)
-        
-        # Open action
-        open_action = QAction("Open Configuration", self)
-        open_action.setShortcut("Ctrl+O")
-        open_action.triggered.connect(self.open_configuration)
-        file_menu.addAction(open_action)
-        
-        # Save action
-        save_action = QAction("Save Configuration", self)
-        save_action.setShortcut("Ctrl+S")
-        save_action.triggered.connect(self.save_configuration)
-        file_menu.addAction(save_action)
-        
-        file_menu.addSeparator()
-        
-        # Exit action
-        exit_action = QAction("Exit", self)
-        exit_action.setShortcut("Ctrl+Q")
-        exit_action.triggered.connect(self.close)
-        file_menu.addAction(exit_action)
-        
-        # View menu
-        view_menu = menubar.addMenu("View")
+        # Terminal panel toggle action
+        self.terminal_action = QAction("Show Terminal Panel", self)
+        self.terminal_action.setShortcut("Ctrl+T")
+        self.terminal_action.setCheckable(True)
+        self.terminal_action.setChecked(False)
+        self.terminal_action.triggered.connect(self.toggle_terminal_panel)
+        options_menu.addAction(self.terminal_action)
         
         # Refresh cameras action
         refresh_action = QAction("Refresh Cameras", self)
         refresh_action.setShortcut("F5")
         refresh_action.triggered.connect(self.refresh_cameras)
-        view_menu.addAction(refresh_action)
-        
-        # Help menu
-        help_menu = menubar.addMenu("Help")
-        
-        # About action
-        about_action = QAction("About", self)
-        about_action.triggered.connect(self.show_about)
-        help_menu.addAction(about_action)
-        
-        # User Guide action
-        guide_action = QAction("User Guide", self)
-        guide_action.triggered.connect(self.show_user_guide)
-        help_menu.addAction(guide_action)
+        options_menu.addAction(refresh_action)
     
     def setup_status_bar(self):
         """Setup the status bar."""
@@ -202,58 +181,65 @@ class MainWindow(QMainWindow):
                 # If even that fails, just print to console
                 print(f"Status update error during shutdown: {str(e)}")
     
-    def new_configuration(self):
-        """Create a new configuration."""
-        # Clear deck
-        self.controller.clear_deck()
-        
-        # Reset settings to defaults
-        self.status_bar.showMessage("New configuration created")
-    
-    def open_configuration(self):
-        """Open a configuration file."""
-        from PyQt6.QtWidgets import QFileDialog
-        
-        filename, _ = QFileDialog.getOpenFileName(
-            self, "Open Configuration", "", "JSON Files (*.json)"
-        )
-        
-        if filename:
-            success = self.controller.import_deck_layout(filename)
-            if success:
-                self.status_bar.showMessage(f"Configuration loaded from {filename}")
-            else:
-                self.status_bar.showMessage("Failed to load configuration file.")
-    
-    def save_configuration(self):
-        """Save the current configuration."""
-        from PyQt6.QtWidgets import QFileDialog
-        
-        filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Configuration", "", "JSON Files (*.json)"
-        )
-        
-        if filename:
-            success = self.controller.export_deck_layout(filename)
-            if success:
-                self.status_bar.showMessage(f"Configuration saved to {filename}")
-            else:
-                self.status_bar.showMessage("Failed to save configuration file.")
-    
     def refresh_cameras(self):
         """Refresh the camera list."""
         self.camera_view.refresh_cameras()
         self.status_bar.showMessage("Cameras refreshed")
     
-    def show_about(self):
-        """Show the about dialog."""
-        # Removed modal dialog - info available in documentation
-        self.status_bar.showMessage("Microtissue Manipulator Control v1.0")
+    def toggle_terminal_panel(self):
+        """Toggle the visibility of the terminal panel."""
+        if self.terminal_panel is None:
+            return
+            
+        if self.terminal_action.isChecked():
+            # Show terminal panel
+            self.show_terminal_panel()
+        else:
+            # Hide terminal panel
+            self.hide_terminal_panel()
     
-    def show_user_guide(self):
-        """Show the user guide."""
-        # Removed modal dialog - info available in documentation
-        self.status_bar.showMessage("User guide available in documentation")
+    def show_terminal_panel(self):
+        """Show the terminal panel in the splitter."""
+        if self.terminal_panel is None:
+            return
+            
+        # Add terminal panel to splitter if not already there
+        if self.main_splitter.count() == 1:
+            self.main_splitter.addWidget(self.terminal_panel)
+            # Set collapsible property now that we have 2 widgets
+            self.main_splitter.setCollapsible(1, True)  # Side panel can be collapsed
+        
+        # Show the panel and resize splitter
+        self.terminal_panel.show()
+        self.main_splitter.setSizes([800, 300])  # Give terminal panel some space
+        
+        # Update menu action
+        self.terminal_action.setChecked(True)
+        self.terminal_action.setText("Hide Terminal Panel")
+        
+        self.status_bar.showMessage("Terminal panel shown")
+    
+    def hide_terminal_panel(self):
+        """Hide the terminal panel."""
+        if self.terminal_panel is None:
+            return
+            
+        # Hide the panel and resize splitter
+        self.terminal_panel.hide()
+        
+        # Only set sizes if panel is actually in the splitter
+        if self.main_splitter.count() == 2:
+            self.main_splitter.setSizes([1000, 0])  # Hide terminal panel
+        
+        # Update menu action
+        self.terminal_action.setChecked(False)
+        self.terminal_action.setText("Show Terminal Panel")
+        
+        self.status_bar.showMessage("Terminal panel hidden")
+    
+    def on_terminal_panel_closed(self):
+        """Handle terminal panel being closed via its close button."""
+        self.hide_terminal_panel()
     
     def closeEvent(self, event):
         """Handle application close event."""

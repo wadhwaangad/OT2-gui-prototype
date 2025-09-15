@@ -55,7 +55,7 @@ class CuboidPickingModel:
         """Set reference to the main controller."""
         self.controller = controller
     
-    def start_cuboid_picking(self, well_plan, config_data: Dict[str, Any]) -> bool:
+    def start_cuboid_picking(self, well_plan, config_data: Dict[str, Any], plate_type:int) -> bool:
         """Start cuboid picking procedure using the TissuePickerFSM."""
         try:
             if self.is_picking_active:
@@ -63,7 +63,6 @@ class CuboidPickingModel:
                 return False
             
             # Create destination and routine
-            plate_type  = 96
             dest = Destination(plate_type)
             
             # Convert DataFrame well_plan to dictionary format expected by Routine
@@ -111,7 +110,7 @@ class CuboidPickingModel:
                     traceback.print_exc()
                 finally:
                     self.is_picking_active = False
-                    self.tissue_picker_fsm = None
+                    # Don't clear tissue_picker_fsm here to allow progress monitoring cleanup
             
             self.fsm_thread = threading.Thread(target=run_fsm, daemon=True)
             self.fsm_thread.start()
@@ -135,25 +134,28 @@ class CuboidPickingModel:
     
     def get_default_picking_config(self) -> Dict[str, Any]:
         """Get default picking configuration based on PickingConfig dataclass."""
+        dish_bottom = 66.1
+        pickup_offset = 0.5
         return {
-            'vol': 25.0,
-            'dish_bottom': 65.6,
-            'pickup_offset': 0.5,
-            'pickup_height': 66.1,  # dish_bottom + pickup_offset
+            'vol': 10.0,
+            'dish_bottom': dish_bottom,
+            'pickup_offset': pickup_offset,
+            'pickup_height': dish_bottom + pickup_offset,
             'flow_rate': 50.0,
-            'cuboid_size_theshold': (350, 550),
+            'cuboid_size_theshold': (250, 500),
             'failure_threshold': 0.5,
             'minimum_distance': 1.7,
             'wait_time_after_deposit': 0.5,
-            'well_offset_x': 0.0,
-            'well_offset_y': 0.0,
-            'deposit_offset_z': 0.2,
+            'one_by_one': False,
+            'well_offset_x': -0.3,  
+            'well_offset_y': -0.9,  
+            'deposit_offset_z': 0.5,
             'destination_slot': 5,
             'circle_center': (1296, 972),
             'circle_radius': 900,
-            'contour_filter_window': (50, 3000),
-            'aspect_ratio_window': (0.75, 1.25),
-            'min_circularity': 0.6
+            'contour_filter_window': (30, 1000),  
+            'aspect_ratio_window': (0.75, 1.25),  
+            'circularity_window': (0.6, 0.9)
         }
     
     def is_procedure_active(self) -> bool:

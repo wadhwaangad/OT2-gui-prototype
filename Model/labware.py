@@ -2,7 +2,6 @@
 Labware model for the microtissue manipulator GUI.
 Contains functionality for managing labware declarations and configurations.
 """
-
 import json
 import os
 from typing import Dict, Any, List, Optional, Tuple
@@ -467,18 +466,20 @@ class LabwareModel:
             bool: True if calibration successful, False otherwise
         """
         try:
-            # Configuration constants
-            CALIB_MODULE_COORDINATES = (282.19999999999993, 161.27, 115.00000000000001)
-            CALIB_MODULE_HEIGHT = 69
-            DETECTION_OFFSET_X = -4
-            DETECTION_OFFSET_Y = 0
-            MAX_OFFSET_THRESHOLD = 40
             
             # Step 1: Setup
             self._ensure_lights_on()
             tf_mtx, calib_origin, offset, model = self._load_calibration_resources()
             calibration_data = utils.load_calibration_config(globals.calibration_profile)
+
             
+            # Configuration constants
+            CALIB_MODULE_COORDINATES = calib_origin = np.array(calibration_data['calib_origin'])[:2]
+            CALIB_MODULE_HEIGHT = 69
+            DETECTION_OFFSET_X = -4
+            DETECTION_OFFSET_Y = 0
+            MAX_OFFSET_THRESHOLD = 40
+
             # Step 2: Move to calibration module
             globals.robot_api.move_to_coordinates(
                 CALIB_MODULE_COORDINATES, 

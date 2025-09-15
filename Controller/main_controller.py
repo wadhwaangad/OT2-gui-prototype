@@ -669,7 +669,7 @@ class MainController(QObject):
         """Get current blow out parameters."""
         return self.manual_movement_model.get_blow_out_params()
     
-    def start_cuboid_picking(self, well_plan, config_data: Dict[str, Any]) -> bool:
+    def start_cuboid_picking(self, well_plan, config_data: Dict[str, Any], plate_type:int) -> bool:
         cameras = self.get_available_cameras()
         for camera_data in cameras:
             user_label, camera_index, cam_name, default_res = camera_data
@@ -694,7 +694,7 @@ class MainController(QObject):
         try:
             self.cuboid_picking_model.start_cuboid_picking(
             well_plan, 
-            config_data)
+            config_data,plate_type)
             return True
         except Exception as e:
             print(f"Error starting cuboid picking: {e}")

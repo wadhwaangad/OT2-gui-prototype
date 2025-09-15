@@ -21,6 +21,7 @@ import cv2
 import json
 import time
 from enum import Enum
+from PyQt6.QtCore import QObject, pyqtSignal
 import Model.picking_procedure as pp
 import Model.core as core
 import Model.globals as globals
@@ -46,8 +47,15 @@ class RobotState(Enum):
     COMPLETED = 'completed'
 
 
-class TissuePickerFSM():
+class TissuePickerFSM(QObject):
+    # Progress signals for real-time UI updates
+    well_started = pyqtSignal(str)  # well_id
+    well_completed = pyqtSignal(str, int, bool)  # well_id, filled_count, success
+    state_changed = pyqtSignal(str, str)  # state_name, well_id
+    picking_progress = pyqtSignal(dict)  # {well_id: filled_count} for all wells
+    
     def __init__(self, config: pp.PickingConfig, routine: pp.Routine, logger: pp.MarkdownLogger):
+        super().__init__()
         self.state = RobotState.IDLE
         self.logger = logger
         self.running = True
@@ -72,6 +80,18 @@ class TissuePickerFSM():
         self.cuboid_choice = None
         self.current_frame = None
         self.current_well = self.routine.get_next_well()
+        
+        # Emit initial state
+        self.state_changed.emit(self.state.value, self.current_well or "")
+    
+    def _emit_state_change(self, new_state):
+        """Helper method to emit state changes and update current well."""
+        self.state = new_state
+        self.state_changed.emit(self.state.value, self.current_well or "")
+    
+    def _emit_well_progress(self):
+        """Helper method to emit current picking progress."""
+        self.picking_progress.emit(dict(self.routine.filled_wells))
 
     def calculate_robot_coordinates(self, cX, cY, robot_x, robot_y):
         X_init, Y_init, _ = self.tf_mtx @ (cX, cY, 1)
@@ -279,7 +299,7 @@ class TissuePickerFSM():
                 self.running = False
                 break
 
-        self.state = RobotState.CAPTURE_FRAME
+        self._emit_state_change(RobotState.CAPTURE_FRAME)
         self.start_time = time.time()
 
     def state_capture_frame(self):
@@ -288,7 +308,7 @@ class TissuePickerFSM():
 
         frame = self.frame_capturer.capture_frame("overview_cam_2")
         self.current_frame = globals.frame_ops.undistort_frame(frame)
-        self.state = RobotState.ANALYZE_FRAME
+        self._emit_state_change(RobotState.ANALYZE_FRAME)
 
     def state_auto_shake(self):
         globals.robot_api.retract_axis('leftZ')
@@ -302,17 +322,22 @@ class TissuePickerFSM():
         globals.robot_api.move_relative('x', -2)
         globals.robot_api.retract_axis('leftZ')
         time.sleep(2)
-        self.state = RobotState.CAPTURE_FRAME
+        self._emit_state_change(RobotState.CAPTURE_FRAME)
 
     def state_analyze_frame(self):
         self.cv_pipeline(self.current_frame)
         if len(self.isolated) == 0:
             print("No isolated cuboids found. Pausing...")
             self.logger.log("No cuboids found in the selected region. Pausing...")
-            self.state = RobotState.AUTO_SHAKE
+            self._emit_state_change(RobotState.AUTO_SHAKE)
             return
 
         next_well = self.routine.get_next_well()
+        # Emit that we're starting work on this well
+        if next_well != self.current_well:
+            self.current_well = next_well
+            self.well_started.emit(next_well)
+        
         cuboids_to_fill = self.routine.well_plan[next_well] - self.routine.filled_wells[next_well]
         if not self.config.one_by_one:
             if len(self.isolated) > cuboids_to_fill:
@@ -326,7 +351,7 @@ class TissuePickerFSM():
         plot_frame = self.current_frame.copy()
         self.draw_annotations(plot_frame)
         globals.cuboid_picking_frame = plot_frame.copy()
-        self.state = RobotState.APPROACH_TARGET
+        self._emit_state_change(RobotState.APPROACH_TARGET)
 
     def state_approach_target(self):
         cuboid_coordinates = self.cuboid_choice[['cX', 'cY']].values
@@ -334,7 +359,7 @@ class TissuePickerFSM():
         for cX, cY in cuboid_coordinates:
             X, Y = self.calculate_robot_coordinates(cX, cY, self.calib_origin[0], self.calib_origin[1])
             self.world_coordinates.append((X, Y))
-        self.state = RobotState.PICKUP_SAMPLE
+        self._emit_state_change(RobotState.PICKUP_SAMPLE)
 
     def state_pickup_sample(self):
         for x,y in self.world_coordinates:
@@ -343,7 +368,7 @@ class TissuePickerFSM():
             globals.robot_api.aspirate_in_place(flow_rate = self.config.flow_rate, volume = self.config.vol)
             globals.robot_api.move_relative('z', 20)
 
-        self.state = RobotState.VERIFY_PICKUP
+        self._emit_state_change(RobotState.VERIFY_PICKUP)
 
     def state_verify_pickup(self):
         globals.robot_api.move_to_coordinates((self.calib_origin[0],self.calib_origin[1],115), min_z_height=self.config.dish_bottom, verbose=False, force_direct=True)
@@ -364,17 +389,23 @@ class TissuePickerFSM():
                 if any(distances <= self.config.failure_threshold):
                     print(f"Miss detected at well {self.routine.current_well}.")
                     self.routine.update_well(success=False)
+                    # Emit well completion with failure
+                    self.well_completed.emit(self.current_well, self.routine.filled_wells[self.current_well], False)
+                    self._emit_well_progress()
                     miss_occurred = True
                     self.logger.log(f"Miss detected at well {self.routine.current_well}.")
 
             if not miss_occurred:
                 for _, _ in self.cuboid_choice[['cX', 'cY']].values:
                     self.routine.update_well(success=True)
+                # Emit well completion with success
+                self.well_completed.emit(self.current_well, self.routine.filled_wells[self.current_well], True)
+                self._emit_well_progress()
 
         if miss_occurred:
-            self.state = RobotState.DEPOSIT_BACK
+            self._emit_state_change(RobotState.DEPOSIT_BACK)
         else:
-            self.state = RobotState.TRANSFER_TO_WELL
+            self._emit_state_change(RobotState.TRANSFER_TO_WELL)
 
         globals.cuboid_picking_frame = plot_frame.copy()
 
@@ -386,7 +417,7 @@ class TissuePickerFSM():
         time.sleep(0.5)
         globals.robot_api.move_relative('z', 20)
 
-        self.state = RobotState.CAPTURE_FRAME
+        self._emit_state_change(RobotState.CAPTURE_FRAME)
 
     def state_transfer_to_well(self):
 
@@ -414,9 +445,9 @@ class TissuePickerFSM():
 
         self.current_well = self.routine.get_next_well() # Check if the routine is done
         if self.routine.is_done():
-            self.state = RobotState.COMPLETED
+            self._emit_state_change(RobotState.COMPLETED)
         else:
-            self.state = RobotState.CAPTURE_FRAME
+            self._emit_state_change(RobotState.CAPTURE_FRAME)
 
     def state_completed(self):
         self.end_time = time.time()

@@ -36,3 +36,5 @@ calibration_profile= "checkerboard"
 frame_ops = frameOperations(2048,1536)
 frame_ops.load_camera_intrinsics(config_profile=calibration_profile, use_new_cam_mtx=True)
 default_focus = 900
+OverviewCameraName = "overview_cam_2"  # User label for overview camera
+UnderviewCameraName = "underview_cam" # User label for underview camera

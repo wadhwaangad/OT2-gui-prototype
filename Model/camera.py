@@ -277,7 +277,7 @@ class CaptureWorker(QObject):
            
             camera_opened = False
             try:
-                self.cap = cv2.VideoCapture(self.camera_id)
+                self.cap = cv2.VideoCapture(self.camera_id, cv2.CAP_DSHOW)
                 if self.cap.isOpened():
                     camera_opened = True
                 else:
