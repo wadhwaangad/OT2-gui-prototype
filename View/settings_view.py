@@ -13,7 +13,6 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QDialog, QDialogButtonBox, QSpinBox
 from View.zoomable_video_widget import VideoDisplayWidget
-from View.calibration_profile_dialog import CalibrationProfileDialog
 import time
 import Model.globals as globals
 class SettingsView(QWidget):
