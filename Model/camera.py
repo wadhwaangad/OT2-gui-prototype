@@ -297,6 +297,7 @@ class CaptureWorker(QObject):
             # Set properties before initial test
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter.fourcc('M','J','P','G'))
             self.cap.set(cv2.CAP_PROP_FPS, self.fps)
             
             # Verify the resolution was actually set
